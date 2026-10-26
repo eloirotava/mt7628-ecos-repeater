@@ -1,0 +1,38 @@
+# Device API
+
+All paths are relative to the current device origin. HTTP authentication is required where configured; obtain credentials from the owner. No cloud service is used.
+
+## Read current state
+
+GET /wifi_state.html returns JSON: busy (0 or 1), revision (apply counter), error (0 on success), stage, mode (ap or repeater), ssid, uplink, channel and security (driver authentication name). saved=1 means this apply wrote and verified the configuration in flash. busy=0 means applying has finished; it does not prove that a wireless uplink or Internet connection works.
+
+## Apply Wi-Fi settings
+
+POST /wifi_apply.html using application/x-www-form-urlencoded, with these named fields. Do not send CMD or SET fields.
+
+- SAVE: 1 to save persistently, or 0 for a temporary apply. Omission defaults to 0. Persistent saving requires owner authorization.
+- MODE: ap or repeater. Both modes bridge clients; ap disables the wireless uplink. Both use upstream DHCP for the management address and disable the device DHCP server.
+- SSID: device network name, 1-32 UTF-8 bytes, no control characters.
+- PASSWORD: device WPA2-Personal password, 8-63 printable ASCII characters. Required on every apply; never returned by the API.
+- CHANNEL: integer 1-13, subject to the device's configured regulatory region. In repeater mode, match the existing network channel.
+- UPLINK_SSID: required for repeater, 1-32 UTF-8 bytes.
+- UPLINK_SECURITY: wpa2 (AES), mixed (WPA/WPA2 TKIP/AES), or open. Required for repeater. WPA3-only and enterprise networks are unsupported.
+- UPLINK_PASSWORD: 8-63 printable ASCII characters for secured repeater uplinks; ignored for open networks.
+
+The response is OK when accepted, or ERROR: followed by an explanation. OK is acceptance, not proof of successful connectivity. Poll /wifi_state.html until busy is 0, error is 0 and revision has increased, then verify mode, ssid, channel and uplink. For SAVE=1 also require saved=1. Error -3 means saving failed. Also test traffic from a Wi-Fi client. Invalid fields are rejected before any configuration is changed. GET requests to the apply endpoint do not change settings.
+
+Access Point needs Ethernet to the router. Repeater uses wireless backhaul: disconnect an Ethernet uplink to the same network before applying to avoid a bridge loop. Reconnect to the configured device SSID if Wi-Fi drops. Its DHCP address may change.
+
+## Firmware tests and recovery
+
+Telnet uses TCP 23. Authenticate with credentials supplied by the owner. At CMD>, use help and ramboot status. Use up to leave submenus.
+
+ramboot check <TFTP-server> <file.img> downloads and validates a complete uImage including its header. ramboot boot <TFTP-server> <file.img> downloads, validates and executes it in RAM, dropping connections. Neither command installs firmware. Use a compatible image and an authorized TFTP server.
+
+Normal flash driver writes are blocked except for the explicit configuration-save operation, limited to config data at offsets 0x31000–0x35fff. Erasing preserves other bytes of its physical sector 0x30000–0x3ffff. Bootloader/environment and calibration are outside this sector. A power cycle boots the installed firmware; hardware watchdog recovery requires compatible test firmware that preserves the watchdog. A network-only hang may need a power cycle. Never use direct flash-write commands during an inspection.
+
+## Explicit firmware installation
+
+ramboot install-check <TFTP-server> <file.img> validates the complete uImage and flash geometry without writing. ramboot flash-info reports CRC32 checks of boot/environment, config sector and calibration. ramboot flash-read <offset> <length> reads up to 256 bytes of the config sector for a private backup.
+
+Only with explicit owner authorization, ramboot install <TFTP-server> <file.img> CONFIRM-FLASH downloads and validates the image, erases firmware blocks starting at 0x50000, programs and verifies the payload, then commits the uImage header last and verifies the complete result. Check ramboot status for state=installed, busy=0, error=none. It does not reboot or save configuration. Never interrupt power during installation. Power cycling after successful installation starts the new resident image.

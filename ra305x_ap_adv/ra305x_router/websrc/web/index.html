@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Smart Plug Wi-Fi</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='4' width='56' height='56' rx='14' fill='%230a66c2'/%3E%3Cpath d='M18 30a20 20 0 0 1 28 0M23 36a12 12 0 0 1 18 0' fill='none' stroke='%23fff' stroke-width='4' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='44' r='4' fill='%23fff'/%3E%3Crect x='22' y='12' width='4' height='9' rx='2' fill='%23fff'/%3E%3Crect x='38' y='12' width='4' height='9' rx='2' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/css/wifi.css">
+<link rel="describedby" href="/llms.txt">
+</head>
+<body>
+<main>
+<header><span class="eyebrow">SMART PLUG</span><h1>Your Wi-Fi, your way.</h1><p>Use an Ethernet uplink or extend an existing wireless network.</p></header>
+<p class="notice">Save &amp; apply keeps your settings after restart. Apply temporarily to try a configuration for this session.</p>
+<form id="wifi-form" action="/wifi_apply.html" method="post">
+<fieldset><legend>Operating mode</legend>
+<label class="mode"><input type="radio" name="MODE" value="ap" checked><span><strong>Access Point</strong><small>Ethernet in, Wi-Fi out. Connect the cable to your router.</small></span></label>
+<label class="mode"><input type="radio" name="MODE" value="repeater"><span><strong>Repeater</strong><small>Connect to a 2.4 GHz Wi-Fi network and extend it.</small></span></label>
+</fieldset>
+<fieldset><legend>Your Wi-Fi network</legend>
+<label for="ssid">Network name (SSID)</label><input id="ssid" name="SSID" maxlength="32" required autocomplete="off">
+<label for="password">Wi-Fi password</label><input id="password" name="PASSWORD" type="password" minlength="8" maxlength="63" required autocomplete="new-password"><small>WPA2 security. Enter 8–63 ASCII characters. Existing passwords are never displayed.</small>
+<label for="channel">2.4 GHz channel</label><select id="channel" name="CHANNEL"></select><small id="channel-note">Choose a channel for your access point.</small>
+</fieldset>
+<fieldset id="uplink-fields" hidden><legend>Wi-Fi uplink</legend>
+<p class="notice">Avoid a network loop: disconnect the Ethernet uplink before applying Repeater mode. Keep access through the device's Wi-Fi.</p>
+<label for="uplink">Existing network name (SSID)</label><input id="uplink" name="UPLINK_SSID" maxlength="32" autocomplete="off">
+<label for="security">Existing network security</label><select id="security" name="UPLINK_SECURITY"><option value="wpa2">WPA2-Personal (AES)</option><option value="mixed">WPA/WPA2-Personal (mixed)</option><option value="open">Open network (no password)</option></select>
+<label for="uplink-password">Existing network password</label><input id="uplink-password" name="UPLINK_PASSWORD" type="password" minlength="8" maxlength="63" autocomplete="new-password">
+<small>Use the same channel as the existing network. WPA3-only networks are not supported.</small>
+</fieldset>
+<button id="apply" type="submit" name="SAVE" value="1">Save &amp; apply</button>
+<button id="temporary" type="submit" name="SAVE" value="0">Apply temporarily</button>
+<p id="status" role="status" aria-live="polite"></p>
+</form>
+<footer>Instructions for agents and LLMs: <a href="/llms.txt">/llms.txt</a></footer>
+</main>
+<script id="wifi-state" type="application/json"><% CGI_WIFI_STATE(); %></script>
+<script src="/js/wifi.js"></script>
+</body>
+</html>

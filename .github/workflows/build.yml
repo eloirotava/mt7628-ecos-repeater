@@ -1,0 +1,41 @@
+name: build
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  firmware:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wi-Fi UI and flash policy tests
+        run: python3 tools/test_wifi_ui.py
+
+      - name: i386 runtime for the SDK toolchain
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y libc6:i386 libgcc-s1:i386 zlib1g:i386 make dos2unix gcc gzip
+          curl -sLO http://archive.ubuntu.com/ubuntu/pool/universe/g/gcc-3.3/libstdc++5_3.3.6-30ubuntu2_i386.deb
+          sudo dpkg -i libstdc++5_3.3.6-30ubuntu2_i386.deb
+
+      - name: build
+        shell: bash
+        run: |
+          set -o pipefail
+          sh ra305x_ap_adv/ra305x_router/scripts/mkautoconf.sh
+          make kernel 2>&1 | tee kernel.log | tail -40
+          make module 2>&1 | tee module.log | tail -150
+          ls -la *.img *.bin || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: firmware
+          path: |
+            *.img
+            *.bin
+            *.log
+            ra305x_ap_adv/ra305x_router/.config
