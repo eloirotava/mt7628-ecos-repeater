@@ -61,6 +61,10 @@ int auth_check( http_req *req)
 	
     CFG_get(CFG_SYS_IDLET, &idletime);
 	addr = ntohl(req->ip);
+
+	/* No admin password set (factory default): open access until one is configured */
+	if (userinfo[0].passwd[0] == '\0')
+		return 0;
 	
 	
     /* Does this request contain authorization info? */

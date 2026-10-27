@@ -251,8 +251,8 @@ void http_config(void)
 
 	diag_printf("zweb_location:%x\n", zweb_location);
 
-	/* LAN */
-	if (listener[0].ip != SYS_lan_ip || listener[0].is_ssl != ssl_enabled) {
+	/* LAN: always rebind; a network restart leaves the old socket on a deleted netif */
+	{
 		if (listener[0].s >= 0) {
 			close(listener[0].s);
 			listener[0].s = -1;
@@ -265,7 +265,8 @@ void http_config(void)
 		else
 			listener[0].port = DEFAULT_HTTP_PORT;
 
-		if ((listener[0].s = get_sock(SYS_lan_if, listener[0].port)) < 0)
+		/* Any address: DHCP lease, rescue alias, and before the lease arrives */
+		if ((listener[0].s = get_sock(NULL, listener[0].port)) < 0)
 			diag_printf("[HTTPD]: create LAN socket error\n");
 
 		listener[0].ip = SYS_lan_ip;
@@ -335,11 +336,18 @@ void HTTPD_daemon(cyg_addrword_t data)
 	struct httpmsg *msg;
 	fd_set  fds;
 	struct  timeval tv;
+	int retry = 0;
 
 	tv.tv_sec = 1;
 	tv.tv_usec = 0;
 
 	while(1) {
+		/* Retry every ~5 s while the LAN listener is missing */
+		if (listener[0].s < 0 && ++retry >= 5) {
+			retry = 0;
+			HTTPD_reconf = 1;
+		}
+
 		if(HTTPD_reconf) {
 			http_config();
 			HTTPD_reconf = 0;

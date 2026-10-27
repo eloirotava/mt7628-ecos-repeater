@@ -1383,13 +1383,14 @@ int CFG_load(int id)
 		/* format ssid */
 		sprintf(valbuf, "%s",val);
 		strcat(ssid,valbuf);
-		strcat(ssid,"_");
+		strcat(ssid,"-");
 		int i;
-		for(i=3;i<=5;i++)
+		/* Full Wi-Fi MAC without colons: Extender-A03E9C1D0E54 */
+		for(i=0;i<=5;i++)
 		{
 			if(wlan_mac[i]!=0)
 			{
-			sprintf(valbuf, "%02x",wlan_mac[i]);
+			sprintf(valbuf, "%02X",wlan_mac[i]);
 			strcat(ssid,valbuf);
 			}
 			else
