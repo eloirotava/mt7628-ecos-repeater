@@ -228,6 +228,7 @@ static char wifi_ui_stack[16384];
 static cyg_sem_t wifi_ui_wake;
 
 static int wifi_ui_restart(void);
+extern int CFG_telnet_allowed(void);
 
 static void wifi_ui_worker(cyg_addrword_t arg)
 {
@@ -291,6 +292,23 @@ void CGI_wifi_state(http_req *req)
     CFG_get_str(CFG_WLN_Channel, val);
     WEB_printf(req, ",\"channel\":%d,\"security\":", atoi(val));
     CFG_get_str(CFG_WLN_ApCliAuthMode, val); wifi_ui_json(req,val);
+    CFG_get_str(CFG_WLN_AuthMode, val);
+    WEB_printf(req, ",\"device_security\":\"%s\"", strncmp(val,"OPEN",4) ? "wpa2" : "open");
+    CFG_get_str(CFG_SYS_USERS, val);
+    WEB_printf(req, ",\"admin_user\":"); wifi_ui_json(req,val);
+    CFG_get_str(CFG_SYS_ADMPASS, val);
+    WEB_printf(req, ",\"admin_password_set\":%d,\"telnet\":%d", val[0] != '\0', CFG_telnet_allowed());
+    WEB_printf(req, ",\"chip\":\"MT7628KN\",\"version\":"); wifi_ui_json(req,sys_cust_ver);
+    WEB_printf(req, ",\"build\":%u,\"uptime\":%u", sys_build_time, (unsigned int)(cyg_current_time()/100));
+    CFG_get_str(CFG_WLN_ApCliEnable, val);
+    if (atoi(val)) {
+        /* Driver text such as "Connected" or "Disconnected" for the uplink. */
+        extern char *connectStat;
+        extern int CmdIwpriv(int argc, char *argv[]);
+        char *show[] = { "apcli0", "show", "connStatus" };
+        CmdIwpriv(3, show);
+        WEB_printf(req, ",\"uplink_status\":"); wifi_ui_json(req, connectStat ? connectStat : "");
+    }
     WEB_printf(req, "}");
 }
 
@@ -298,8 +316,9 @@ void CGI_wifi_apply(http_req *req)
 {
     struct wifi_change { int id; const char *value; char old[256]; };
     struct wifi_change *changes;
-    char *mode, *ssid, *key, *uplink, *upkey, *security, *channel, *end, *save;
-    int repeater, ch, count = 0, i;
+    char *mode, *ssid, *key, *uplink, *upkey, *security, *channel, *end, *save, *dsec;
+    char curkey[256], curup[256], curupkey[256], curauth[256];
+    int repeater, open_ap, ch, count = 0, i;
     static int created;
     if (req->method != METHOD_POST) { WEB_printf(req,"ERROR: POST required"); return; }
     if (wifi_ui_busy) { WEB_printf(req,"ERROR: configuration is busy"); return; }
@@ -308,15 +327,35 @@ void CGI_wifi_apply(http_req *req)
     upkey = WEB_query(req,"UPLINK_PASSWORD"); security = WEB_query(req,"UPLINK_SECURITY");
     channel = WEB_query(req,"CHANNEL");
     save = WEB_query(req,"SAVE");
+    dsec = WEB_query(req,"DEVICE_SECURITY");
     if (save && strcmp(save,"0") && strcmp(save,"1")) goto invalid;
     if (!mode || (strcmp(mode,"ap") && strcmp(mode,"repeater"))) goto invalid;
     repeater = !strcmp(mode,"repeater");
-    if (!wifi_ui_text(ssid,1,32) || !wifi_ui_key(key) || !channel) goto invalid;
+    /* DEVICE_SECURITY=wpa2 with an empty PASSWORD keeps the current key.
+     * Without DEVICE_SECURITY, an empty PASSWORD makes the network open. */
+    if (dsec && !strcmp(dsec,"open")) open_ap = 1;
+    else if (dsec && !strcmp(dsec,"wpa2")) {
+        open_ap = 0;
+        if (!key || !*key) {
+            CFG_get_str(CFG_WLN_AuthMode,curauth);
+            CFG_get_str(CFG_WLN_WPAPSK1,curkey);
+            if (strncmp(curauth,"WPA2PSK",7) || !wifi_ui_key(curkey)) goto invalid;
+            key = curkey;
+        }
+    } else if (dsec) goto invalid;
+    else open_ap = !key || !*key;
+    if (!wifi_ui_text(ssid,1,32) || (!open_ap && !wifi_ui_key(key)) || !channel) goto invalid;
     ch = strtol(channel,&end,10);
     if (*end || ch < 1 || ch > 13) goto invalid;
     if (repeater) {
         if (!wifi_ui_text(uplink,1,32) || !security) goto invalid;
         if (strcmp(security,"open") && strcmp(security,"wpa2") && strcmp(security,"mixed")) goto invalid;
+        if (strcmp(security,"open") && (!upkey || !*upkey)) {
+            /* Same uplink SSID: keep its stored password. */
+            CFG_get_str(CFG_WLN_ApCliSsid,curup);
+            CFG_get_str(CFG_WLN_ApCliWPAPSK,curupkey);
+            if (!strcmp(curup,uplink)) upkey = curupkey;
+        }
         if (strcmp(security,"open") && !wifi_ui_key(upkey)) goto invalid;
     }
     changes = calloc(24,sizeof(*changes));
@@ -330,9 +369,9 @@ void CGI_wifi_apply(http_req *req)
     WIFI_CHANGE(CFG_WLN_SSID1,ssid);
     WIFI_CHANGE(CFG_WLN_AutoSSID,"1");
     WIFI_CHANGE(CFG_WLN_BssidNum,"1");
-    WIFI_CHANGE(CFG_WLN_AuthMode,"WPA2PSK;OPEN;OPEN;OPEN");
-    WIFI_CHANGE(CFG_WLN_EncrypType,"AES;NONE;NONE;NONE");
-    WIFI_CHANGE(CFG_WLN_WPAPSK1,key);
+    WIFI_CHANGE(CFG_WLN_AuthMode,open_ap ? "OPEN;OPEN;OPEN;OPEN" : "WPA2PSK;OPEN;OPEN;OPEN");
+    WIFI_CHANGE(CFG_WLN_EncrypType,open_ap ? "NONE;NONE;NONE;NONE" : "AES;NONE;NONE;NONE");
+    WIFI_CHANGE(CFG_WLN_WPAPSK1,open_ap ? "" : key);
     WIFI_CHANGE(CFG_WLN_HideSSID,"0;0;0;0");
     WIFI_CHANGE(CFG_WLN_WirelessMode,"9");
     WIFI_CHANGE(CFG_WLN_HT_BW,"0");
@@ -379,7 +418,7 @@ void CGI_wifi_apply(http_req *req)
     WEB_printf(req,"OK");
     return;
 invalid:
-    WEB_printf(req,"ERROR: check mode, SSIDs, channel and passwords (8-63 ASCII characters)");
+    WEB_printf(req,"ERROR: check mode, SSIDs, channel and passwords (empty for an open network, or 8-63 ASCII characters)");
 }
 
 static int wifi_ui_restart(void)
@@ -6930,4 +6969,94 @@ void CGI_get_conn_stat(http_req *req)
 
 	WEB_printf( req, "%s",connectStat);
 	diag_printf("connectStat:%s", connectStat);
+}
+
+/* Printable ASCII, no spaces or colons: Basic auth splits user:password. */
+static int admin_ui_text(const char *s, int min, int max, int allow_colon)
+{
+    int n = 0;
+    if (!s) return 0;
+    for (; *s; s++, n++)
+        if (*s < 33 || *s > 126 || (!allow_colon && *s == ':')) return 0;
+    return n >= min && n <= max;
+}
+
+void CGI_admin_apply(http_req *req)
+{
+    char cur[256], olduser[256], oldpass[256];
+    char *user, *pass, *confirm, *current;
+    if (req->method != METHOD_POST) { WEB_printf(req,"ERROR: POST required"); return; }
+    user = WEB_query(req,"USER"); pass = WEB_query(req,"PASSWORD");
+    confirm = WEB_query(req,"CONFIRM"); current = WEB_query(req,"CURRENT");
+    if (!pass) pass = "";
+    if (!confirm) confirm = "";
+    if (!admin_ui_text(user,1,31,0)) { WEB_printf(req,"ERROR: user name must be 1-31 printable ASCII characters, without spaces or colons"); return; }
+    if (*pass && !admin_ui_text(pass,8,63,1)) { WEB_printf(req,"ERROR: password must be 8-63 printable ASCII characters, without spaces"); return; }
+    if (strcmp(pass,confirm)) { WEB_printf(req,"ERROR: passwords do not match"); return; }
+    cur[0] = '\0';
+    CFG_get_str(CFG_SYS_ADMPASS, cur);
+    if (cur[0] && (!current || strcmp(current,cur))) { WEB_printf(req,"ERROR: current password is incorrect"); return; }
+    CFG_get_str(CFG_SYS_USERS, olduser);
+    strcpy(oldpass, cur);
+    if (CFG_set_str(CFG_SYS_USERS,user) < 0 || CFG_set_str(CFG_SYS_ADMPASS,pass) < 0) {
+        CFG_set_str(CFG_SYS_USERS,olduser); CFG_set_str(CFG_SYS_ADMPASS,oldpass);
+        CFG_commit(CFG_NO_EVENT);
+        WEB_printf(req,"ERROR: settings could not be applied"); return;
+    }
+    CFG_commit(CFG_NO_EVENT);
+    if (CFG_save_user()) { WEB_printf(req,"ERROR: saving to flash failed"); return; }
+    {
+        /* Reload HTTP credentials; telnet reads the configuration directly. */
+        extern int HTTPD_reconf;
+        HTTPD_reconf = 1;
+    }
+    WEB_printf(req,"OK");
+}
+
+/* Site survey as JSON; the page parses the driver's fixed-width table. */
+void CGI_wifi_scan(http_req *req)
+{
+    extern int CmdIwpriv(int argc, char *argv[]);
+    char *survey[] = { "ra0", "set", "SiteSurvey=" };
+    struct iwreq param;
+    cyg_netdevtab_entry_t *t;
+    struct eth_drv_sc *sc = NULL;
+    char *text;
+
+    for (t = &__NETDEVTAB__[0]; t != &__NETDEVTAB_END__; t++) {
+        struct eth_drv_sc *c = (struct eth_drv_sc *)t->device_instance;
+        if (!strcmp(c->dev_name, "ra0")) { sc = c; break; }
+    }
+    if (!sc || wifi_ui_busy) { WEB_printf(req, "{\"error\":\"busy\",\"raw\":\"\"}"); return; }
+    text = malloc(10240);
+    if (!text) { WEB_printf(req, "{\"error\":\"memory\",\"raw\":\"\"}"); return; }
+    CmdIwpriv(3, survey);
+    cyg_thread_delay(300); /* Let the survey visit all channels. */
+    text[0] = '\0';
+    memset(&param, 0, sizeof(param));
+    param.u.data.flags = RTPRIV_IOCTL_FLAG_NOSPACE | RTPRIV_IOCTL_FLAG_NODUMPMSG;
+    param.u.data.pointer = text;
+    param.u.data.length = 0;
+    rt28xx_ap_ioctl(sc, RTPRIV_IOCTL_GSITESURVEY, (caddr_t)&param);
+    if (param.u.data.length > 0 && param.u.data.length < 10240) text[param.u.data.length] = '\0';
+    else text[0] = '\0';
+    WEB_printf(req, "{\"error\":\"\",\"raw\":");
+    wifi_ui_json(req, text);
+    WEB_printf(req, "}");
+    free(text);
+}
+
+void CGI_system_apply(http_req *req)
+{
+    char *action = WEB_query(req,"ACTION");
+    if (req->method != METHOD_POST) { WEB_printf(req,"ERROR: POST required"); return; }
+    if (wifi_ui_busy) { WEB_printf(req,"ERROR: configuration is busy"); return; }
+    if (action && !strcmp(action,"reboot")) {
+        WEB_printf(req,"OK");
+        mon_snd_cmd(MON_CMD_REBOOT);
+    } else if (action && !strcmp(action,"factory")) {
+        WEB_printf(req,"OK");
+        CGI_reset_default();
+    } else
+        WEB_printf(req,"ERROR: ACTION must be reboot or factory");
 }

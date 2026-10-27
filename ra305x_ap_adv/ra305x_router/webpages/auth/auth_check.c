@@ -42,15 +42,15 @@ void user_config(int lan_updated, int wan_updated)
 			(lan_updated && userinfo[i].listenif ==0)||(wan_updated && userinfo[i].listenif == 1))
 		{
 			bzero(&(userinfo[i]), sizeof(struct userinfo_t));
-			strncpy(userinfo[i].username, username,sizeof(userinfo[i].username));
-			strncpy(userinfo[i].passwd, passwd,sizeof(userinfo[i].passwd));
+			strncpy(userinfo[i].username, username,sizeof(userinfo[i].username)-1);
+			strncpy(userinfo[i].passwd, passwd,sizeof(userinfo[i].passwd)-1);
 		}
 	}
 }
 
 int auth_check( http_req *req)
 {
-    char authinfo[50];
+    char authinfo[100];
     char* authpass;
     int l, i;
     int idletime;

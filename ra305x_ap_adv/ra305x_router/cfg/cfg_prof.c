@@ -2378,6 +2378,22 @@ int CFG_set_rf_agc(int ch, int val)
 // RETURN
 //
 //------------------------------------------------------------------------------
+/* Telnet needs an admin password and a secured device network. */
+int CFG_telnet_allowed(void)
+{
+	char val[256];
+
+	val[0] = '\0';
+	CFG_get_str(CFG_SYS_ADMPASS, val);
+	if (val[0] == '\0')
+		return 0;
+	val[0] = '\0';
+	CFG_get_str(CFG_WLN_AuthMode, val);
+	if (val[0] == '\0' || !strncmp(val, "OPEN", 4))
+		return 0;
+	return 1;
+}
+
 void CFG_reset_default()
 {
 	diag_printf("Reset the default configuration to flash!\n"); 

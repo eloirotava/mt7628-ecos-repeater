@@ -639,8 +639,14 @@ extern void CGI_var_map(http_req *req, char *name, int id);
 extern void CGI_var_map_array(http_req *req, char *name, int id, int num);
 extern void CGI_wifi_state(http_req *req);
 extern void CGI_wifi_apply(http_req *req);
+extern void CGI_admin_apply(http_req *req);
+extern void CGI_wifi_scan(http_req *req);
+extern void CGI_system_apply(http_req *req);
 #define CGI_WIFI_STATE() CGI_wifi_state(req)
 #define CGI_WIFI_APPLY() CGI_wifi_apply(req)
+#define CGI_ADMIN_APPLY() CGI_admin_apply(req)
+#define CGI_WIFI_SCAN() CGI_wifi_scan(req)
+#define CGI_SYSTEM_APPLY() CGI_system_apply(req)
 extern int CGI_do_cmd(http_req *req);
 
 extern void CGI_get_cfg(http_req *req, int tag);

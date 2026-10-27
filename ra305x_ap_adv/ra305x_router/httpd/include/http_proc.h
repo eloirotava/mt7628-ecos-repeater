@@ -167,8 +167,8 @@ struct err_page{
 };
 
 struct userinfo_t{
-	char username[16];
-	char passwd[16];
+	char username[32];
+	char passwd[64];
 	int admin_addr;
 	int logout_time;
 	unsigned char listenif;

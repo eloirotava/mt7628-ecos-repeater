@@ -93,6 +93,8 @@ static char telnet_CR_LF[2]={'\r', '\n'};
 static char *userName = "Login as:";
 static char *userNameError = "Invalid User Name\r\n";
 static char *password = "Password:";
+static char *telnetDisabled = "\r\nTelnet is disabled. In the web interface, set a Wi-Fi password and an admin password.\r\n";
+extern int CFG_telnet_allowed(void);
 static char *passwordError = "Access denied\r\n";
 #endif // MODULE_TELNET //
 #endif //CMD_HISTORY
@@ -364,7 +366,12 @@ goto_continue:
                 {
                     case TELNET_WITHOUT_AUTH:
                         /* check the input username is correct or not*/
-    					if (!strcmp(buf, get_sys_adm_name()))  
+    					if (!CFG_telnet_allowed())
+    					{
+    						write(fd_client, telnetDisabled, strlen(telnetDisabled));
+    						write(fd_client, userName, strlen(userName));
+    					}
+    					else if (!strcmp(buf, get_sys_adm_name()))  
     					{
     						write(fd_client, password, strlen(password));
     						haveAuth = TELNET_IN_AUTH;
@@ -379,7 +386,7 @@ goto_continue:
                         break;
                     case TELNET_IN_AUTH:
                         /* check the input password is correct or not*/
-    					if (!strcmp(buf, get_sys_adm_pass())) 
+    					if (CFG_telnet_allowed() && !strcmp(buf, get_sys_adm_pass())) 
     					{
     						haveAuth = TELNET_PASS_AUTH;                            
     						buf[0] = '\0';
