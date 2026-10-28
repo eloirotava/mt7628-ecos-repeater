@@ -12,7 +12,10 @@ source = (repo / 'ra305x_ap_adv/ra305x_router/websrc/cgi/cgi_v2/cgi_api.c').read
 start = source.index('/* English AP/repeater UI.')
 end = source.index('\nstatic int wifi_ui_restart(void)\n{', start)
 implementation = source[start:end]
-constants = sorted(set(re.findall(r'\bCFG_[A-Za-z0-9_]+', implementation)) - {'CFG_get_str', 'CFG_set_str', 'CFG_commit', 'CFG_NO_EVENT', 'CFG_save_user'})
+admin_start = source.index('/* Printable ASCII, no spaces or colons')
+admin_end = source.index('/* Site survey as JSON', admin_start)
+implementation += '\n' + source[admin_start:admin_end]
+constants = sorted(set(re.findall(r'\bCFG_[A-Za-z0-9_]+', implementation)) - {'CFG_get_str', 'CFG_set_str', 'CFG_commit', 'CFG_NO_EVENT', 'CFG_save_user', 'CFG_telnet_allowed'})
 defines = '#define CFG_NO_EVENT 999\n' + ''.join(f'#define {name} {i+1}\n' for i, name in enumerate(constants))
 harness = (repo / 'tools/wifi_ui_test.c').read_text()
 harness = defines + harness.replace('/* IMPLEMENTATION */', implementation)
@@ -22,7 +25,7 @@ with tempfile.TemporaryDirectory(prefix='tomada-wifi-tests-') as temp:
     cfile.write_text(harness)
     subprocess.run(['gcc', '-std=gnu99', '-Werror=implicit-function-declaration', str(cfile), '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True)
-subprocess.run(['node', str(repo / 'tools/wifi_ui_test.js'), str(web / 'js/wifi.js')], check=True)
+subprocess.run(['node', str(repo / 'tools/wifi_ui_test.js'), str(web / 'index.html')], check=True)
 
 class FormParser(HTMLParser):
     def __init__(self):
@@ -39,11 +42,19 @@ class FormParser(HTMLParser):
 page = (web / 'index.html').read_text()
 parser = FormParser()
 parser.feed(page)
-js_ids = set(re.findall(r"getElementById\('([^']+)'\)", (web / 'js/wifi.js').read_text()))
+script = page[page.rindex('<script>'):]
+js_ids = set(re.findall(r"\$\('([^']+)'\)", script))
 assert js_ids <= parser.ids, js_ids - parser.ids
 assert parser.modes == {'ap', 'repeater'}
 assert 'lang="en"' in page and not re.search('[\u3400-\u9fff]', page)
-assert 'href="/llms.txt"' in page and (web / 'llms.txt').is_file()
+assert 'href="/llms.txt"' in page and (web / 'llms.txt').is_file() and (web / 'agent_api.txt').is_file()
+assert '<title>MT7628KN Wi-Fi Extender</title>' in page and 'Smart Plug' not in page
+assert page.count('<%') == 1, 'only the state CGI tag may appear; webcomp parses <%'
+for endpoint in ('wifi_state', 'wifi_apply', 'wifi_scan', 'admin_apply', 'system_apply'):
+    assert (web / f'{endpoint}.html').is_file(), endpoint
+assert not (web / 'factorySetting.html').exists()
+cfg = (repo / 'ra305x_ap_adv/ra305x_router/webpages/web.cfg').read_text()
+assert 'llms.txt' in cfg and 'agent_api.txt' in cfg
 print('PASS: HTML form wiring, English interface and local agent instructions')
 
 # Exercise the actual installer against a NOR flash model, including failures.

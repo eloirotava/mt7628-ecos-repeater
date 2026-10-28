@@ -234,7 +234,7 @@ function parseSurvey(raw) {
   for (i = 0; i < lines.length; i++) if (/^Ch\s+SSID\s+BSSID/.test(lines[i])) { head = i; break; }
   if (head < 0) return [];
   var h = lines[head];
-  var col = {ssid: h.indexOf('SSID'), bssid: h.indexOf('BSSID'), sec: h.indexOf('Security'), sig: h.search(/Si[gn]+al/), mode: h.indexOf('W-Mode')};
+  var col = {ssid: h.indexOf('SSID'), bssid: h.indexOf('BSSID'), sec: h.indexOf('Security'), sig: h.search(/Sig(?:an|na)l/) /* driver prints "Siganl" */, mode: h.indexOf('W-Mode')};
   var best = {};
   for (i = head + 1; i < lines.length; i++) {
     var l = lines[i];

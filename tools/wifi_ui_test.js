@@ -1,33 +1,146 @@
 const fs = require('fs'), vm = require('vm'), assert = require('assert');
-const code = fs.readFileSync(process.argv[2], 'utf8');
-function fixture(mode) {
-  const ids = {}, events = {}, calls = [];
-  ['wifi-form','wifi-state','channel','status','apply','temporary','uplink-fields','uplink','uplink-password','security','channel-note','ssid','password'].forEach(id => ids[id] = {value:'',textContent:'',hidden:false,required:false,disabled:false,appendChild(){},addEventListener(name, fn){events[name] = fn;}});
-  ids['wifi-state'].textContent = JSON.stringify({mode,ssid:'Test AP',uplink:'Source',channel:6,security:'WPA2PSK',revision:0,busy:0});
-  ids['wifi-form'].elements = {MODE:{value:mode}};
-  let applied;
-  const context = {TextEncoder,URLSearchParams,AbortSignal,console,Promise,setTimeout(fn){fn();},window:{confirm(){return true;}},document:{getElementById(id){return ids[id];},createElement(){return {};}},FormData:class {
-    constructor(){this.items=[['MODE',ids['wifi-form'].elements.MODE.value],['SSID',ids.ssid.value],['PASSWORD',ids.password.value],['CHANNEL',ids.channel.value],['UPLINK_SSID',ids.uplink.value],['UPLINK_SECURITY',ids.security.value]];if(!ids['uplink-password'].disabled)this.items.push(['UPLINK_PASSWORD',ids['uplink-password'].value]);}
-    [Symbol.iterator](){return this.items[Symbol.iterator]();}
-  },async fetch(url, options){
-    calls.push({url,options});
-    if(options.method === 'POST'){
-      const p=options.body;applied={revision:1,busy:0,saved:p.get('SAVE')==='1'?1:0,mode:p.get('MODE'),ssid:p.get('SSID'),uplink:p.get('UPLINK_SSID'),channel:Number(p.get('CHANNEL'))};
-      return {async text(){return 'OK\n';}};
-    }
-    return {async json(){return applied;}};
-  }};
-  vm.runInNewContext(code,context);
-  return {ids,events,calls};
+const page = fs.readFileSync(process.argv[2], 'utf8');
+const code = page.slice(page.lastIndexOf('<script>') + 8, page.lastIndexOf('</script>'));
+const ids = [...page.matchAll(/id="([^"]+)"/g)].map(m => m[1]);
+
+/* Real driver output, trimmed: hex UTF-8 SSID, hidden network, duplicate SSID, WPA3. */
+const survey = [
+  'Ch  SSID                                                             BSSID               Security               Siganl(%)W-Mode  ExtCH  NT WPS DPID',
+  '1   Vizinha                                                          c8:5d:38:96:5d:94   WPA2PSK/AES            13       11b/g/n NONE   In YES     ',
+  '1   CasaTania_2g                                                     e8:20:e2:0d:be:3d   WPA1PSKWPA2PSK/TKIPAES 23       11b/g/n NONE   In YES     ',
+  '1   #CLARO-WIFI                                                      ea:20:e2:0d:bf:3e   NONE                   24       11b/g/n NONE   In  NO     ',
+  '2   0x53616CC3A36F2033C2B0                                           80:3f:5d:32:ff:de   WPA1PSKWPA2PSK/TKIPAES 5        11b/g/n ABOVE  In YES     ',
+  '4                                                                    4e:06:17:cf:d0:19   WPA2PSK/AES            37       11b/g/n NONE   In  NO     ',
+  '6   ALMEIDA                                                          b0:fc:88:fd:c9:2b   WPA2PSK/AES            76       11b/g/n NONE   In YES     ',
+  '10  #CLARO-WIFI                                                      da:33:b7:53:ef:f2   NONE                   5        11b/g/n NONE   In  NO     ',
+  '11  Corp                                                             08:c7:f5:06:71:cb   WPA3SAE/AES            40       11b/g/n NONE   In YES     ',
+].join('\n');
+
+function element(id) {
+  const el = {id, value: '', textContent: '', hidden: false, disabled: false, checked: false, className: '', style: {}, tabIndex: -1,
+    children: [], listeners: {}, focused: false,
+    appendChild(c) { this.children.push(c); return c; },
+    addEventListener(name, fn) { this.listeners[name] = fn; },
+    focus() { this.focused = true; }};
+  Object.defineProperty(el, 'textContent', {get() { return el._text || ''; }, set(v) { el._text = String(v); if (v === '') el.children = []; }});
+  return el;
 }
-(async()=>{
- let f=fixture('ap');assert(f.ids['uplink-fields'].hidden);assert(!f.ids.uplink.required);assert(f.ids['uplink-password'].disabled);
- f.ids.password.value='short';await f.events.submit({preventDefault(){},submitter:{value:"0"}});assert(f.calls.length===0);assert(f.ids.status.textContent.includes('8–63'));
- f.ids.password.value='test-pass-123';await f.events.submit({preventDefault(){},submitter:{value:"0"}});assert(f.calls.length===2);assert(f.calls[0].url==='/wifi_apply.html');assert(f.calls[0].options.body.get('MODE')==='ap');assert(f.ids.status.textContent.startsWith('Settings applied'));assert(f.ids.password.value==='');assert(!f.ids.apply.disabled);
- f=fixture('ap');f.ids.password.value='test-pass-123';await f.events.submit({preventDefault(){},submitter:{value:'1'}});assert(f.calls[0].options.body.get('SAVE')==='1');assert(f.ids.status.textContent.startsWith('Settings saved'));
- f=fixture('repeater');assert(!f.ids['uplink-fields'].hidden);assert(f.ids.uplink.required);assert(f.ids['uplink-password'].required);
- f.ids.password.value='test-pass-123';f.ids['uplink-password'].value='uplink-pass-123';await f.events.submit({preventDefault(){},submitter:{value:"0"}});assert(f.calls[0].options.body.get('MODE')==='repeater');assert(f.calls[0].options.body.get('UPLINK_PASSWORD')==='uplink-pass-123');assert(f.ids.status.textContent.startsWith('Settings applied'));
- f=fixture('repeater');f.ids.security.value='open';f.events.change();assert(f.ids['uplink-password'].disabled);assert(!f.ids['uplink-password'].required);
- f.ids.ssid.value='é'.repeat(17);f.ids.password.value='test-pass-123';await f.events.submit({preventDefault(){},submitter:{value:"0"}});assert(f.calls.length===0);assert(f.ids.status.textContent.includes('UTF-8'));
- console.log('PASS: UI mode switching, password and UTF-8 validation, POST fields, apply polling and feedback');
-})().catch(e=>{console.error(e);process.exitCode=1;});
+
+function fixture(state, opts = {}) {
+  const els = {};
+  ids.forEach(id => els[id] = element(id));
+  els['wifi-state'].textContent = JSON.stringify(state);
+  const radios = {ap: element('mode-ap'), repeater: element('mode-repeater')};
+  radios.ap.value = 'ap'; radios.repeater.value = 'repeater';
+  els['wifi-form'].querySelector = sel => {
+    if (sel === 'input[name=MODE]:checked') return radios.ap.checked ? radios.ap : radios.repeater;
+    const m = /value=(\w+)/.exec(sel); return radios[m[1]];
+  };
+  els['wifi-form'].querySelectorAll = () => [els.apply];
+  els['scan-table'].tBodies = [element('tbody')];
+  const calls = [];
+  let current = Object.assign({}, state);
+  const context = {TextEncoder, TextDecoder, URLSearchParams, Uint8Array, AbortSignal, console, Promise, Object, Math, Date, JSON,
+    setTimeout(fn) { fn(); }, setInterval() {},
+    window: {confirm() { return opts.confirm !== false; }},
+    document: {hidden: false, getElementById(id) { return els[id]; }, createElement(tag) { return element(tag); }, createTextNode(t) { return {textContent: t}; }},
+    async fetch(url, options = {}) {
+      calls.push({url, options});
+      if (url.startsWith('/wifi_scan.html')) return {async json() { return {error: '', raw: survey}; }};
+      if (options.method === 'POST') {
+        if (url === '/wifi_apply.html') current = Object.assign({}, current, {revision: current.revision + 1, busy: 0, error: 0, saved: 1});
+        return {async text() { return opts.reply || 'OK\n'; }};
+      }
+      return {async json() { return current; }};
+    }};
+  vm.runInNewContext(code, context);
+  return {els, radios, calls, posts: () => calls.filter(c => c.options.method === 'POST')};
+}
+const base = {busy: 0, revision: 3, error: 0, saved: 1, mode: 'ap', ssid: 'Extender-A03E9C1D0E54', uplink: 'ECOSAPClient', channel: 6,
+  security: 'WPA2PSK', device_security: 'open', admin_user: 'admin', admin_password_set: 0, telnet: 0, chip: 'MT7628KN', version: '1.0', build: 1700000000, uptime: 3700};
+const submit = f => f.els['wifi-form'].listeners.submit({preventDefault() {}});
+
+(async () => {
+  /* Initial render */
+  let f = fixture(base);
+  assert(f.radios.ap.checked && f.els['uplink-fields'].hidden);
+  assert.strictEqual(f.els.uplink.value, '', 'driver placeholder uplink is hidden');
+  assert(f.els['device-password-field'].hidden, 'open network hides password');
+  assert(!f.els['admin-banner'].hidden && f.els['current-field'].hidden);
+  assert(f.els['st-telnet'].textContent.startsWith('Disabled'));
+  assert.strictEqual(f.els['st-uptime'].textContent, '1 h 1 min');
+
+  /* Open AP apply: always saves, sends open security and no password */
+  await submit(f);
+  let p = f.posts()[0].options.body;
+  assert.strictEqual(f.posts()[0].url, '/wifi_apply.html');
+  assert.strictEqual(p.get('SAVE'), '1'); assert.strictEqual(p.get('DEVICE_SECURITY'), 'open'); assert.strictEqual(p.get('PASSWORD'), '');
+  assert(f.els['wifi-msg'].textContent.startsWith('Saved and applied'));
+
+  /* Switching an open network to WPA2 requires a password */
+  f = fixture(base); f.els['device-security'].value = 'wpa2'; f.els['wifi-form'].listeners.change();
+  assert(!f.els['device-password-field'].hidden);
+  await submit(f); assert.strictEqual(f.posts().length, 0); assert(f.els['wifi-msg'].textContent.includes('8–63'));
+  f.els.password.value = 'short'; await submit(f); assert.strictEqual(f.posts().length, 0);
+  f.els.password.value = 'device-pass-1'; await submit(f); assert.strictEqual(f.posts()[0].options.body.get('PASSWORD'), 'device-pass-1');
+  assert.strictEqual(f.els.password.value, '', 'password field cleared');
+
+  /* WPA2 network: empty password keeps the current one */
+  f = fixture(Object.assign({}, base, {device_security: 'wpa2'}));
+  await submit(f); p = f.posts()[0].options.body;
+  assert.strictEqual(p.get('DEVICE_SECURITY'), 'wpa2'); assert.strictEqual(p.get('PASSWORD'), '');
+
+  /* UTF-8 length check */
+  f = fixture(base); f.els.ssid.value = 'é'.repeat(17); await submit(f); assert.strictEqual(f.posts().length, 0);
+
+  /* Repeater: scan, parse and choose */
+  f = fixture(base); f.radios.ap.checked = false; f.radios.repeater.checked = true; f.els['wifi-form'].listeners.change();
+  assert(!f.els['uplink-fields'].hidden && f.els.channel.disabled);
+  await f.els.scan.listeners.click.call(f.els.scan);
+  const rows = f.els['scan-table'].tBodies[0].children;
+  const names = rows.map(r => r.children[0].textContent);
+  assert.deepStrictEqual(names, ['ALMEIDA', 'Corp', '#CLARO-WIFI', 'CasaTania_2g', 'Vizinha', 'Salão 3°']);
+  assert(!names.includes(''), 'hidden networks skipped');
+  assert.strictEqual(rows[2].children[2].textContent, '1', 'duplicate SSID keeps the strongest entry');
+  assert.strictEqual(rows[1].children[3].textContent, 'WPA3SAE/AES');
+  rows[3].listeners.click();
+  assert.strictEqual(f.els.uplink.value, 'CasaTania_2g'); assert.strictEqual(f.els['uplink-security'].value, 'mixed'); assert.strictEqual(f.els.channel.value, '1');
+  assert(f.els['uplink-password'].focused);
+  rows[1].listeners.click(); assert(f.els['scan-msg'].className.includes('bad'), 'WPA3 is unsupported');
+  rows[2].listeners.click(); assert.strictEqual(f.els['uplink-security'].value, 'open'); assert(f.els['uplink-password'].disabled);
+
+  /* Repeater apply: new uplink needs its password */
+  rows[0].listeners.click();
+  await submit(f); assert.strictEqual(f.posts().length, 0); assert(f.els['wifi-msg'].textContent.includes('uplink password'));
+  f.els['uplink-password'].value = 'uplink-pass-1'; await submit(f);
+  p = f.posts()[0].options.body;
+  assert.strictEqual(p.get('MODE'), 'repeater'); assert.strictEqual(p.get('UPLINK_SSID'), 'ALMEIDA'); assert.strictEqual(p.get('UPLINK_SECURITY'), 'wpa2');
+  assert.strictEqual(p.get('UPLINK_PASSWORD'), 'uplink-pass-1'); assert.strictEqual(p.get('CHANNEL'), '6');
+
+  /* Same uplink: empty password keeps the stored one */
+  f = fixture(Object.assign({}, base, {mode: 'repeater', uplink: 'Home', uplink_status: 'Disconnected'}));
+  assert(f.els['st-uplink'].className === 'bad' && f.els['st-uplink'].textContent.includes('not connected'));
+  await submit(f); assert.strictEqual(f.posts().length, 1); assert.strictEqual(f.posts()[0].options.body.get('UPLINK_PASSWORD'), '');
+  f = fixture(Object.assign({}, base, {mode: 'repeater', uplink: 'Home', uplink_status: 'Connected'}));
+  assert.strictEqual(f.els['st-uplink'].className, 'ok');
+
+  /* Administration */
+  f = fixture(base); const admin = f.els['admin-form'].listeners.submit;
+  f.els['admin-user'].value = 'ad min'; await admin({preventDefault() {}}); assert.strictEqual(f.posts().length, 0);
+  f.els['admin-user'].value = 'admin'; f.els['admin-password'].value = 'admin-pass-1'; f.els['admin-confirm'].value = 'other-pass-1';
+  await admin({preventDefault() {}}); assert(f.els['admin-msg'].textContent.includes('do not match'));
+  f.els['admin-confirm'].value = 'admin-pass-1'; await admin({preventDefault() {}});
+  p = f.posts()[0]; assert.strictEqual(p.url, '/admin_apply.html');
+  assert.strictEqual(p.options.body.get('USER'), 'admin'); assert.strictEqual(p.options.body.get('PASSWORD'), 'admin-pass-1');
+  assert(f.els['admin-msg'].textContent.includes('sign in')); assert.strictEqual(f.els['admin-password'].value, '');
+  f = fixture(base, {reply: 'ERROR: current password is incorrect'});
+  f.els['admin-user'].value = 'admin'; f.els['admin-password'].value = 'admin-pass-1'; f.els['admin-confirm'].value = 'admin-pass-1';
+  await f.els['admin-form'].listeners.submit({preventDefault() {}}); assert.strictEqual(f.els['admin-msg'].textContent, 'current password is incorrect');
+
+  /* System actions need confirmation */
+  f = fixture(base, {confirm: false}); await f.els.factory.listeners.click(); assert.strictEqual(f.posts().length, 0);
+  f = fixture(base); await f.els.factory.listeners.click(); assert.strictEqual(f.posts()[0].options.body.get('ACTION'), 'factory');
+  f = fixture(base); await f.els.reboot.listeners.click(); assert.strictEqual(f.posts()[0].options.body.get('ACTION'), 'reboot');
+
+  console.log('PASS: status rendering, scan parsing and selection, Wi-Fi and admin validation, POST fields, system actions');
+})().catch(e => { console.error(e); process.exitCode = 1; });
