@@ -325,6 +325,15 @@ int lan_set_ip(void)
     if ( lan_up == true )
 	{
     	lan_rescue_alias();
+	/* Bridge mode: the device is a host on the upstream network and needs
+	 * its gateway for its own traffic (SNTP, WireGuard, ntun). */
+	{
+		extern int opmode;
+		extern cyg_bool_t RT_add_default(const char *intf, unsigned int gw);
+		if (opmode == 3 && primary_lan_ip_set.gw_ip &&
+		    RT_add_default(LAN_NAME, primary_lan_ip_set.gw_ip))
+			diag_printf("LAN: default route via %s\n", inet_ntoa(*(struct in_addr *)&primary_lan_ip_set.gw_ip));
+	}
     	show_ip_set(&primary_lan_ip_set);
     	diag_printf("interface %s init_net successed!\n", LAN_NAME);
 #ifdef RALINK_1X_SUPPORT

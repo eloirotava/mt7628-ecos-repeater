@@ -177,7 +177,12 @@ show_usage:
     if (!strcmp(argv[0],"init"))    //reset to default
         CFG_reset_default();
     else if (!strcmp(argv[0],"save"))
-        CFG_save(0);
+    {
+        /* Flash writes are only allowed inside the config window. */
+        extern int CFG_save_user(void);
+        if (CFG_save_user()) printf("save failed\n");
+        else printf("saved\n");
+    }
     else if (!strcmp(argv[0],"commit"))
         CFG_commit(0);
     else if (!strcmp(argv[0],"show"))    //show profile
