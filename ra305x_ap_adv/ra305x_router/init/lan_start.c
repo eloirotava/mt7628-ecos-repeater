@@ -335,9 +335,12 @@ int lan_set_ip(void)
 	 * gateway for its own traffic (SNTP, WireGuard). A static LAN
 	 * without a gateway (future routed mode) adds nothing. */
 	{
-		extern int opmode;
 		extern cyg_bool_t RT_add_default(const char *intf, unsigned int gw);
-		if ((opmode == 2 || opmode == 3) && primary_lan_ip_set.gw_ip &&
+		/* lan_ip_mode(0) == 0 exactly when the LAN is a bridge node; in
+		 * WISP router mode the default route comes from the WAN (apcli0),
+		 * and the LAN may report 255.255.255.255 as its gateway. */
+		if (lan_ip_mode(1) == 0 && primary_lan_ip_set.gw_ip &&
+		    primary_lan_ip_set.gw_ip != 0xffffffff &&
 		    RT_add_default(LAN_NAME, primary_lan_ip_set.gw_ip))
 			diag_printf("LAN: default route via %s\n", inet_ntoa(*(struct in_addr *)&primary_lan_ip_set.gw_ip));
 	}
