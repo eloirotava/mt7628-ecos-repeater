@@ -11,7 +11,8 @@ SRC = wg54.c sys24.c mips24.S $(R)/wg/wg_proto.c \
 
 # -march=mips32: the BCM5354 (4KEc) has no MIPS32r2 instructions.
 # No -lgcc: Debian's libgcc is MIPS32r2 and PIC; sys24.c has what is needed.
-CFLAGS = -Os -Wall -Wextra -march=mips32 -mno-abicalls -fno-pic -G0 \
+# Ubuntu's gcc fortifies by default, which calls __memcpy_chk from the libc.
+CFLAGS = -Os -Wall -Wextra -march=mips32 -mno-abicalls -fno-pic -G0 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 \
 	-ffreestanding -fno-builtin -fno-stack-protector -fno-asynchronous-unwind-tables \
 	-ffunction-sections -fdata-sections -fno-tree-loop-distribute-patterns \
 	-I$(R)/wg -I$(R)/crypto

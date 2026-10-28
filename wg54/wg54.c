@@ -20,6 +20,7 @@
  * 2.6 kernel. Only system calls that Linux 2.4 has are used. */
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 #include <asm/unistd.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
