@@ -197,8 +197,9 @@ static void server_thread(cyg_addrword_t arg)
 				diag_printf("dhcps %s: packet socket %s\n", n->ifname, n->sock ? "ready" : "FAILED");
 			}
 			if (!n->sock) continue;
-			tv.tv_sec = 0;
-			tv.tv_usec = 100000;
+			/* LIB_pktsocket_deQ only honours tv_sec: 0 would never return a packet */
+			tv.tv_sec = 1;
+			tv.tv_usec = 0;
 			fd = DHCPD_rcv(n->sock, &tv, 0);
 			if (fd == -1) diag_printf("dhcps %s: dropped (checksum/length)\n", n->ifname);
 			if (fd == 0 || fd == -1) continue;
