@@ -143,6 +143,7 @@ void net_extra_fw_rules(void (*set)(char *))
 		CFG_get_str(internet_ids[num[i] - 2], val);
 		internet[i] = strcmp(val, "0") != 0;
 	}
+	diag_printf("net: isolation rules for %d routed network(s)\n", count);
 	for (i = 0; i < count; i++) {
 		const char *x = names[i];
 		snprintf(buf, sizeof buf, "pass out quick on %s from any to any keep state\n", x);

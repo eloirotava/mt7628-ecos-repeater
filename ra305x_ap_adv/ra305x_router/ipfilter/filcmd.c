@@ -103,6 +103,8 @@ void FW_setrule(char *cmdbuf)
 
 	if (fr != NULL)
 		IPL_EXTERN(ioctl)(IPL_LOGIPF, SIOCINAFR, &fr, O_RDWR, NULL);
+	else
+		diag_printf("[FW] rule not parsed: %s", cmdbuf);
 }
 
 
