@@ -37,6 +37,12 @@ static const char * volatile rb_state = "idle";
 static const char * volatile rb_error = "none";
 static volatile unsigned int rb_received;
 static struct in_addr rb_server;
+/* Image handed over by the web interface instead of TFTP (ramboot_web) */
+static unsigned char *rb_buf;
+static unsigned int rb_buf_size;
+static void *rb_buf_owner;
+static void (*rb_buf_release)(void *);
+static int rb_reboot_after;
 static char rb_file[128];
 static int rb_boot;
 static int rb_install, rb_install_check;
@@ -355,9 +361,12 @@ static void rb_worker(cyg_addrword_t unused)
     for (;;) {
         unsigned char *image = NULL;
         unsigned int size = 0;
+        int from_buffer;
         cyg_semaphore_wait(&rb_sem);
-        rb_state = "downloading";
-        if (rb_fetch(&image, &size) < 0) {
+        from_buffer = rb_buf != NULL;
+        if (from_buffer) { image = rb_buf; size = rb_buf_size; rb_buf = NULL; }
+        rb_state = from_buffer ? "checking" : "downloading";
+        if (!from_buffer && rb_fetch(&image, &size) < 0) {
             rb_state = "failed";
             diag_printf("ramboot: refused: %s\n", rb_error);
         } else {
@@ -368,7 +377,15 @@ static void rb_worker(cyg_addrword_t unused)
                 if (rb_flash_geometry(size,0) || (rb_install && rb_flash_install(image,size))) {
                     rb_state="failed";
                     diag_printf("ramboot: installation refused/failed: %s\n",rb_error);
-                } else rb_state=rb_install ? "installed" : "install_checked";
+                } else {
+                    rb_state=rb_install ? "installed" : "install_checked";
+                    if (rb_install && rb_reboot_after) {
+                        extern int mon_snd_cmd(int cmd);
+                        diag_printf("ramboot: installed; restarting into the new firmware\n");
+                        cyg_thread_delay(200);
+                        mon_snd_cmd(2 /* MON_CMD_REBOOT */);
+                    }
+                }
             } else if (rb_boot) {
                 rb_state = "booting";
                 if (rb_launch(image, size) < 0) {
@@ -376,11 +393,67 @@ static void rb_worker(cyg_addrword_t unused)
                     diag_printf("ramboot: refused: %s\n", rb_error);
                 }
             }
-            free(image);
+            if (from_buffer) { if (rb_buf_release) rb_buf_release(rb_buf_owner); }
+            else free(image);
         }
+        rb_reboot_after = 0;
         rb_busy = 0;
     }
 }
+
+static void rb_start_worker(void)
+{
+    if (!rb_started) {
+        cyg_semaphore_init(&rb_sem, 0);
+        cyg_thread_create(10, rb_worker, 0, "RAMBoot_thread", rb_stack,
+                          sizeof(rb_stack), &rb_handle, &rb_thread);
+        rb_started = 1;
+        cyg_thread_resume(rb_handle);
+    }
+}
+
+/* Same checks as rb_fetch applies to a downloaded image. */
+static int rb_validate(const unsigned char *image, unsigned int size)
+{
+    unsigned int total;
+    if (size < 192) { rb_error = "file too small"; return -1; }
+    if (rb_header(image, &total)) return -1;
+    if (total != size) { rb_error = "file size does not match the header"; return -1; }
+    if (rb_crc32(image + 64, size - 64) != rb_be32(image + 24)) { rb_error = "payload CRC mismatch"; return -1; }
+    if (image[72] != 0 || image[73] != 4 || image[74] != 0 || image[75] != 0x80) {
+        rb_error = "unsupported decompression destination"; return -1;
+    }
+    return 0;
+}
+
+/* Web interface: image already in memory. mode 0 = check only, 1 = run in
+ * RAM (flash untouched), 2 = install to flash and restart. Validation is
+ * synchronous; boot/install run on the worker, which calls release(owner)
+ * when done (also on any refusal here). Returns 0 or -1 (see *err). */
+int ramboot_web(unsigned char *image, unsigned int size, int mode,
+                void *owner, void (*release)(void *), const char **err)
+{
+    if (rb_busy) { *err = "busy"; if (release) release(owner); return -1; }
+    rb_error = "none";
+    if (rb_validate(image, size) || (mode == 2 && rb_flash_geometry(size, 0))) {
+        *err = rb_error; rb_state = "failed"; if (release) release(owner); return -1;
+    }
+    if (mode == 0) { rb_state = "checked"; *err = "none"; if (release) release(owner); return 0; }
+    rb_buf = image; rb_buf_size = size; rb_buf_owner = owner; rb_buf_release = release;
+    rb_boot = mode == 1;
+    rb_install = mode == 2;
+    rb_install_check = 0;
+    rb_reboot_after = mode == 2;
+    rb_received = size; rb_busy = 1; rb_state = "queued";
+    rb_start_worker();
+    cyg_semaphore_post(&rb_sem);
+    *err = "none";
+    return 0;
+}
+
+const char *ramboot_web_state(void) { return rb_state; }
+const char *ramboot_web_error(void) { return rb_error; }
+int ramboot_web_busy(void) { return rb_busy; }
 
 int cmd_ramboot(int argc, char **argv)
 {
@@ -431,13 +504,7 @@ int cmd_ramboot(int argc, char **argv)
     rb_install=!strcmp(argv[0],"install");
     rb_install_check=!strcmp(argv[0],"install-check");
     rb_received = 0; rb_error = "none"; rb_busy = 1; rb_state = "queued";
-    if (!rb_started) {
-        cyg_semaphore_init(&rb_sem, 0);
-        cyg_thread_create(10, rb_worker, 0, "RAMBoot_thread", rb_stack,
-                          sizeof(rb_stack), &rb_handle, &rb_thread);
-        rb_started = 1;
-        cyg_thread_resume(rb_handle);
-    }
+    rb_start_worker();
     cyg_semaphore_post(&rb_sem);
     diag_printf("ramboot: queued %s from %s (%s)\n", rb_file, argv[1], argv[0]);
     return 0;

@@ -240,6 +240,9 @@ extern void wg_ecos_counters(unsigned long *rx, unsigned long *tx);
 extern int wg_b64_decode32(unsigned char out[32], const char *s);
 extern const char *CLI_boot_result(int n);
 extern const int CLI_boot_ids[8];
+extern const char *ramboot_web_state(void);
+extern const char *ramboot_web_error(void);
+extern int ramboot_web_busy(void);
 
 static void wifi_ui_worker(cyg_addrword_t arg)
 {
@@ -355,7 +358,11 @@ void CGI_wifi_state(http_req *req)
         WEB_printf(req, "]");
     }
     net_state(req);
-    WEB_printf(req, "}");
+    WEB_printf(req, ",\"firmware\":{\"busy\":%d,\"state\":", ramboot_web_busy());
+    wifi_ui_json(req, ramboot_web_state());
+    WEB_printf(req, ",\"error\":");
+    wifi_ui_json(req, ramboot_web_error());
+    WEB_printf(req, "}}");
 }
 
 /* Per-SSID lists such as "WPA2PSK;OPEN;OPEN;OPEN": replace item 0, keep the
@@ -7458,4 +7465,47 @@ static int wifi_ui_uplink_connected(void)
         if (!strcmp(sc->dev_name, "ra0")) return rt28xx_apcli_connected(sc);
     }
     return -1;
+}
+
+/* Firmware update from the web interface: POST multipart field "firmware"
+ * (a zxrouter uImage) to /firmware_apply.html?ACTION=check|test|install.
+ * check validates only; test runs it in RAM (a restart returns to the
+ * installed firmware); install writes the firmware partition with the same
+ * checks as "ramboot install" and restarts. Needs an admin password. */
+extern int ramboot_web(unsigned char *image, unsigned int size, int mode,
+                       void *owner, void (*release)(void *), const char **err);
+
+static void fw_release(void *owner)
+{
+    http_upload_content *c = (http_upload_content *)owner;
+    if (!c) return;
+    if (c->buf) free(c->buf);
+    free(c);
+}
+
+void CGI_firmware_apply(http_req *req)
+{
+    char cur[256], *action = WEB_query(req, "ACTION"), *file;
+    const char *err = "none";
+    int len = 0, mode;
+    http_upload_content *owner;
+    if (req->method != METHOD_POST) { WEB_printf(req,"ERROR: POST required"); return; }
+    if (!action) { WEB_printf(req,"ERROR: ACTION must be check, test or install"); return; }
+    if (!strcmp(action,"check")) mode = 0;
+    else if (!strcmp(action,"test")) mode = 1;
+    else if (!strcmp(action,"install")) mode = 2;
+    else { WEB_printf(req,"ERROR: ACTION must be check, test or install"); return; }
+    cur[0] = '\0';
+    CFG_get_str(CFG_SYS_ADMPASS, cur);
+    if (!cur[0]) { WEB_printf(req,"ERROR: set an admin password before updating firmware"); return; }
+    file = WEB_upload_file(req, "firmware", &len);
+    if (!file || len <= 0) { WEB_printf(req,"ERROR: no firmware file (multipart field \"firmware\")"); return; }
+    /* the image stays in the upload buffer; the RAM-boot worker frees it */
+    owner = req->content;
+    req->content = 0;
+    if (ramboot_web((unsigned char *)file, (unsigned int)len, mode, owner, fw_release, &err)) {
+        WEB_printf(req,"ERROR: %s", err);
+        return;
+    }
+    WEB_printf(req,"OK");
 }

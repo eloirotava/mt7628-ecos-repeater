@@ -79,6 +79,7 @@ GET /wifi_state.html returns JSON:
 - uplink (repeater uplink SSID), security (uplink driver authentication name), uplink_status (repeater only: driver connection text, for example "Connected" or "Disconnected").
 - admin_user, admin_password_set (0 or 1), telnet (1 when Telnet logins are accepted).
 - chip, version, build (UNIX time), uptime (seconds).
+- firmware: busy, state and error of the last firmware check, test or installation.
 - lan (router mode only): address (IPv4/prefix), dhcp (0 or 1).
 - networks: four objects (id 1-4) with enabled, ssid, security (open or wpa2), isolate (0 or 1), and for ids 2-4 address (empty when bridged), reach and internet.
 - wireguard: enabled, address (tunnel address/prefix), peer_public_key, endpoint, port, keepalive, preshared_key_set, public_key (this device, base64; new after every factory reset), state (off, starting, clock, handshake, connected or error), status, handshake_age (seconds, -1 before the first), rx_bytes and tx_bytes.
@@ -126,6 +127,10 @@ POST /wg_apply.html with ENABLED (0 or 1), ADDRESS (this device's IPv4 address a
 ### Startup script
 
 POST /startup_apply.html with COMMAND1 to COMMAND8: console command lines (printable ASCII, up to 200 characters; empty clears a line; absent keeps it). Saved without restarting; they run at every boot, about 20 seconds after start, in order, as if typed at CMD> (submenu names first, e.g. "net route add <net> <mask> <gateway>" or "cfg set <NAME> <value>"). State: startup is a list of 8 objects with command and result ("pending", "ok", "unknown command", "incomplete", "error N", or empty for an empty line). A failing line does not stop the following ones. reboot is not part of the command tree, so it cannot run at startup. Commands that change the saved configuration (cfg set, cfg prof ...) run at every boot; prefer the API for permanent settings.
+
+### Firmware update over HTTP
+
+POST /firmware_apply.html?ACTION=check|test|install as multipart/form-data with the image in the field "firmware" (a zxrouter uImage for this device, as built by the firmware's CI). Needs an admin password (HTTP Basic). check validates header, checksums and target and writes nothing. test runs the image in RAM; a restart or power cycle returns to the installed firmware. install writes only the firmware partition (boot loader, settings and Wi-Fi calibration are kept), verifies it and restarts. The response is OK when the image was accepted; follow progress in GET /wifi_state.html firmware.state (queued, checking, checked, erasing, programming, verifying, installed, booting or failed, with firmware.error). Prefer test before install; never cut power while installing.
 
 ### Firmware tests and recovery
 

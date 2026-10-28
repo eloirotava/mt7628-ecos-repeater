@@ -645,6 +645,7 @@ extern void CGI_system_apply(http_req *req);
 extern void CGI_wg_apply(http_req *req);
 extern void CGI_startup_apply(http_req *req);
 extern void CGI_networks_apply(http_req *req);
+extern void CGI_firmware_apply(http_req *req);
 #define CGI_WIFI_STATE() CGI_wifi_state(req)
 #define CGI_WIFI_APPLY() CGI_wifi_apply(req)
 #define CGI_ADMIN_APPLY() CGI_admin_apply(req)
@@ -653,6 +654,7 @@ extern void CGI_networks_apply(http_req *req);
 #define CGI_WG_APPLY() CGI_wg_apply(req)
 #define CGI_STARTUP_APPLY() CGI_startup_apply(req)
 #define CGI_NETWORKS_APPLY() CGI_networks_apply(req)
+#define CGI_FIRMWARE_APPLY() CGI_firmware_apply(req)
 extern int CGI_do_cmd(http_req *req);
 
 extern void CGI_get_cfg(http_req *req, int tag);

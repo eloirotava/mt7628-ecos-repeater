@@ -230,7 +230,19 @@ legend{font-weight:600;padding:0 4px}
 <button type="button" id="factory" class="danger">Restore factory defaults</button>
 </div>
 <small>Factory defaults: open network “Extender-&lt;MAC&gt;”, no admin password, Telnet disabled. The reset button does the same when held for more than 4 seconds; a short press restarts.</small>
-<small>Firmware updates are installed over Telnet with <code>ramboot install</code>.</small>
+</section>
+
+<section aria-labelledby="h-firmware">
+<h2 id="h-firmware">Firmware update</h2>
+<p class="hint">Upload a firmware image (zxrouter uImage, .img). It is checked first (header, checksums, target). <strong>Test in RAM</strong> runs it without writing flash: a restart returns to the installed firmware. <strong>Install</strong> writes only the firmware partition (boot loader, settings and Wi-Fi calibration are kept) and restarts. Do not unplug the device while installing. Requires an admin password.</p>
+<label for="fw-file">Firmware image</label>
+<input id="fw-file" type="file" accept=".img,.bin">
+<div class="row">
+<button type="button" id="fw-check" class="secondary">Check</button>
+<button type="button" id="fw-test" class="secondary">Test in RAM</button>
+<button type="button" id="fw-install" class="danger">Install</button>
+</div>
+<p id="fw-msg" class="msg" role="status" aria-live="polite"></p>
 <p id="system-msg" class="msg" role="status" aria-live="polite"></p>
 </section>
 
@@ -667,6 +679,37 @@ $('wg-form').addEventListener('submit', async function (e) {
   $('wg-psk').value = '';
   msg(out, 'Saved. Restarting… reload this page in about one minute.', 'good');
 });
+
+async function firmware(action) {
+  var out = $('fw-msg'), f = $('fw-file').files && $('fw-file').files[0];
+  if (!state.admin_password_set) return msg(out, 'Set an admin password first (Administration).', 'bad');
+  if (!f) return msg(out, 'Choose a firmware image (.img).', 'bad');
+  if (f.size < 192 || f.size > 1048640) return msg(out, 'This file is not a firmware image for this device.', 'bad');
+  if (action === 'install' && !window.confirm('Install ' + f.name + ' to flash and restart? Do not unplug the device during installation.')) return;
+  if (action === 'test' && !window.confirm('Run ' + f.name + ' in RAM? A restart returns to the installed firmware.')) return;
+  var body = new FormData(); body.append('firmware', f, f.name);
+  msg(out, 'Uploading ' + f.name + '…');
+  try {
+    var text = await post('/firmware_apply.html?ACTION=' + action, body, 60000);
+    if (text !== 'OK') throw new Error(text.replace(/^ERROR:\s*/, ''));
+  } catch (err) {
+    if (err.name !== 'TimeoutError' && err.name !== 'TypeError') return msg(out, err.message, 'bad');
+  }
+  if (action === 'check') return msg(out, 'The image is valid for this device.', 'good');
+  if (action === 'test') return msg(out, 'Starting the image in RAM… reload this page in about one minute.', 'good');
+  for (var i = 0; i < 40; i++) {
+    await delay(2000);
+    try {
+      var s = await fetchState(), fw = s.firmware || {};
+      if (fw.state === 'failed') return msg(out, 'Installation failed: ' + fw.error + '. The installed firmware is unchanged unless the error mentions programming.', 'bad');
+      if (fw.state === 'installed') return msg(out, 'Installed. Restarting… reload this page in about one minute.', 'good');
+      msg(out, 'Installing (' + (fw.state || '…') + ')… do not unplug the device.');
+    } catch (e) { return msg(out, 'Installed or restarting… reload this page in about one minute.', 'good'); }
+  }
+}
+$('fw-check').addEventListener('click', function () { firmware('check'); });
+$('fw-test').addEventListener('click', function () { firmware('test'); });
+$('fw-install').addEventListener('click', function () { firmware('install'); });
 
 async function system(action, question, done) {
   if (!window.confirm(question)) return;

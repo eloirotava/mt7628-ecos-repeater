@@ -57,7 +57,7 @@ assert '_KEY' not in reset, 'factory reset must erase the WireGuard device key, 
 llms = (web / 'llms.txt').read_text()
 assert '## API reference' in llms and 'agent_api' not in llms, 'one file for agents: guide and API reference'
 assert page.count('<%') == 1, 'only the state CGI tag may appear; webcomp parses <%'
-for endpoint in ('wifi_state', 'wifi_apply', 'wifi_scan', 'admin_apply', 'system_apply', 'wg_apply', 'startup_apply', 'networks_apply'):
+for endpoint in ('wifi_state', 'wifi_apply', 'wifi_scan', 'admin_apply', 'system_apply', 'wg_apply', 'startup_apply', 'networks_apply', 'firmware_apply'):
     assert (web / f'{endpoint}.html').is_file(), endpoint
 assert not (web / 'factorySetting.html').exists()
 assert 'WG_KEY' not in source, 'the web interface must never read the WireGuard device private key'

@@ -50,6 +50,9 @@ void wg_ecos_counters(unsigned long *rx, unsigned long *tx) { *rx = 436; *tx = 3
 int wg_b64_decode32(unsigned char out[32], const char *s) { size_t i; (void)out; if (strlen(s) != 44 || s[43] != '=') return -1; for (i = 0; i < 43; i++) if (!strchr("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", s[i])) return -1; return 0; }
 const int CLI_boot_ids[8] = { 9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008 };
 const char *CLI_boot_result(int n) { return n == 0 ? "ok" : "unknown command"; }
+const char *ramboot_web_state(void) { return "idle"; }
+const char *ramboot_web_error(void) { return "none"; }
+int ramboot_web_busy(void) { return 0; }
 /* IMPLEMENTATION */
 static int wifi_ui_restart(void) { return 0; }
 static int uplink_up=1;
@@ -169,6 +172,7 @@ int main(void) {
  NETSETUP();strcpy(cfg[CFG_WLN_BssidNum],"2");strcpy(cfg[CFG_WLN_SSID2],"guest");strcpy(cfg[CFG_SYS_NET2_IP],"10.0.2.1/24");strcpy(cfg[CFG_SYS_NET2_INTERNET],"1");strcpy(cfg[CFG_LAN_DHCPD_EN],"1");strcpy(cfg[CFG_WLN_WPAPSK2],"secret-net-key");
  CGI_wifi_state(&post);assert(strstr(output,"\"mode\":\"router\""));assert(strstr(output,"\"lan\":{\"address\":\"10.0.1.1/24\",\"dhcp\":1}"));
  assert(strstr(output,"{\"id\":2,\"enabled\":1,\"ssid\":\"guest\",\"security\":\"open\",\"isolate\":0,\"address\":\"10.0.2.1/24\""));assert(strstr(output,"{\"id\":3,\"enabled\":0"));assert(!strstr(output,"secret-net-key"));
+  setup("ap");CGI_wifi_state(&post);assert(strstr(output,"\"firmware\":{\"busy\":0,\"state\":\"idle\",\"error\":\"none\"}"));
  puts("PASS: router mode, per-SSID list preservation, networks validation/overlaps/apply and state");
  puts("PASS: WireGuard validation, preshared key handling, admin requirement, save+restart and state");
  puts("PASS: admin credentials validation, current-password check and save");

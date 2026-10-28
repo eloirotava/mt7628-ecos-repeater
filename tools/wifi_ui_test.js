@@ -219,6 +219,15 @@ const submit = f => f.els['wifi-form'].listeners.submit({preventDefault() {}});
   p = f.posts()[0]; assert.strictEqual(p.url, '/startup_apply.html'); assert.strictEqual(p.options.body.get('COMMAND1'), 'net route add a b c'); assert.strictEqual(p.options.body.get('COMMAND4'), 'cfg set SYS_NAME x'); assert.strictEqual(p.options.body.get('COMMAND8'), '');
   assert(f.els['startup-msg'].textContent.includes('next boot'));
 
+  /* Firmware update */
+  f = fixture(base);
+  await f.els['fw-check'].listeners.click(); assert(f.els['fw-msg'].textContent.includes('admin password')); assert.strictEqual(f.posts().length, 0);
+  f = fixture(Object.assign({}, base, {admin_password_set: 1}));
+  f.els['fw-file'].files = [];
+  await f.els['fw-install'].listeners.click(); assert(f.els['fw-msg'].textContent.includes('Choose')); assert.strictEqual(f.posts().length, 0);
+  f.els['fw-file'].files = [{name: 'x.img', size: 50}];
+  await f.els['fw-check'].listeners.click(); assert(f.els['fw-msg'].textContent.includes('not a firmware')); assert.strictEqual(f.posts().length, 0);
+
   /* System actions need confirmation */
   f = fixture(base, {confirm: false}); await f.els.factory.listeners.click(); assert.strictEqual(f.posts().length, 0);
   f = fixture(base); await f.els.factory.listeners.click(); assert.strictEqual(f.posts()[0].options.body.get('ACTION'), 'factory');
