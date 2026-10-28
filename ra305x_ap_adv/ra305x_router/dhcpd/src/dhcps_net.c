@@ -134,7 +134,10 @@ static void reply(struct net *n, const struct dhcpd *req, int type, unsigned lon
 	p.ip.ip_v = IPVERSION;
 	p.ip.ip_ttl = IPDEFTTL;
 	p.ip.ip_sum = DHCPD_checksum(&p.ip, sizeof(p.ip));
-	LIB_etherpacket_send(n->ifp, NULL, dst_mac, (char *)&p, sizeof p);
+	{
+		int rc = LIB_etherpacket_send(n->ifp, NULL, dst_mac, (char *)&p, sizeof p);
+		diag_printf("dhcps %s: sent type %d to %s rc=%d\n", n->ifname, type, inet_ntoa(*(struct in_addr *)&yiaddr), rc);
+	}
 }
 
 static void handle(struct net *n, struct dhcpd *req)
@@ -144,6 +147,7 @@ static void handle(struct net *n, struct dhcpd *req)
 	struct lease *l;
 	if (req->op != BOOTREQUEST || req->hlen != 6) return;
 	if (!dhcpd_pickup_opt(req, DHCP_MESSAGE_TYPE, sizeof type, &type)) return;
+	diag_printf("dhcps %s: got type %d from %02x:%02x:%02x:%02x:%02x:%02x\n", n->ifname, type, req->chaddr[0], req->chaddr[1], req->chaddr[2], req->chaddr[3], req->chaddr[4], req->chaddr[5]);
 	dhcpd_pickup_opt(req, DHCP_REQUESTED_IP, sizeof want, &want);
 	dhcpd_pickup_opt(req, DHCP_SERVER_ID, sizeof server, &server);
 	switch (type) {
