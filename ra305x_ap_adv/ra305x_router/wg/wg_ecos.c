@@ -18,14 +18,16 @@
 #include "wg_proto.h"
 #include "wg_ecos.h"
 #include "c25519.h"
-#include "util.h" /* ntun: dns_resolve */
+#include "util.h" /* dns_resolve */
+#include "crypto_ecos.h"
 
 extern int CFG_get_str(int id, char *val);
 extern int CFG_set_str(int id, char *val);
 extern int CFG_commit(int id);
 extern int CFG_save_user(void);
-extern long x_getrandom(void *b, size_t n);     /* ntun entropy pool */
+extern long x_getrandom(void *b, size_t n);     /* crypto entropy pool */
 extern cyg_bool_t netif_alias_cfg(const char *intf, struct ip_set *setp);
+extern void CFG_get_mac(int id, char *dp);
 
 #define REKEY_AFTER     120  /* s: start a new handshake */
 #define REJECT_AFTER    180  /* s: stop using a session */
@@ -268,15 +270,19 @@ static void boot_thread(cyg_addrword_t arg)
 	char val[256], host[80];
 	uint8_t key[32], pub[32], peer[32], psk[32], ip[4];
 	struct ip_set addr;
-	int enabled, have_psk, port, tries;
+	int enabled, have_psk, port, tries, enabled_seed_dirty;
+	unsigned char ip_mac[6];
 	(void)arg;
 
 	set_status(WG_STARTING, "Starting");
-	/* the ntun thread collects entropy at boot; wait for it */
-	for (tries = 0; x_getrandom(key, 1) < 0; tries++) {
-		if (tries > 60) { set_status(WG_ERROR, "No random data available"); return; }
-		cyg_thread_delay(100);
-	}
+	/* entropy: saved seed, MAC, then timer jitter (about 5 s) */
+	val[0] = 0;
+	CFG_get_str(CFG_SYS_RND_SEED, val);
+	crypto_entropy_add(val, strlen(val));
+	CFG_get_mac(0, (char *)ip_mac);
+	crypto_entropy_add(ip_mac, sizeof ip_mac);
+	crypto_entropy_collect();
+	enabled_seed_dirty = 0;
 
 	val[0] = 0;
 	CFG_get_str(CFG_SYS_WG_KEY, val);
@@ -285,8 +291,7 @@ static void boot_thread(cyg_addrword_t arg)
 		key[0] &= 248; key[31] = (key[31] & 127) | 64; /* X25519 clamping */
 		wg_b64_encode32(val, key);
 		CFG_set_str(CFG_SYS_WG_KEY, val);
-		CFG_commit(CFG_NO_EVENT);
-		if (CFG_save_user()) diag_printf("wg: saving the device key failed\n");
+		enabled_seed_dirty = 1;
 	}
 	x25519_base(pub, key);
 	wg_b64_encode32(pub_b64, pub);
@@ -295,6 +300,17 @@ static void boot_thread(cyg_addrword_t arg)
 	val[0] = 0;
 	CFG_get_str(CFG_SYS_WG_EN, val);
 	enabled = atoi(val) == 1;
+	/* renew the seed so the next boot does not start from the same state;
+	 * only when something is written anyway or the tunnel is in use */
+	if (enabled || enabled_seed_dirty) {
+		uint8_t seed[32];
+		x_getrandom(seed, 32);
+		wg_b64_encode32(val, seed);
+		memset(seed, 0, sizeof seed);
+		CFG_set_str(CFG_SYS_RND_SEED, val);
+		CFG_commit(CFG_NO_EVENT);
+		if (CFG_save_user()) diag_printf("wg: saving key/seed failed\n");
+	}
 	if (!enabled) { memset(key, 0, sizeof key); set_status(WG_OFF, "Disabled"); return; }
 
 	CFG_get_str(CFG_SYS_ADMPASS, val);

@@ -1,14 +1,19 @@
 /* sys.h on eCos (MT7628KN extender firmware): BSD sockets, poll() over
- * select(), virtual files for the key and resolv.conf, and an entropy pool
- * for x_getrandom. Returns >= 0 on success, -errno on error. */
+ * select(), a virtual resolv.conf with the DHCP DNS server, and an entropy
+ * pool for x_getrandom. Returns >= 0 on success, -errno on error. */
 #include <cyg/kernel/kapi.h>
 #include <network.h>
 #include <sys/select.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdio.h>
+#include <arpa/inet.h>
+#include <cfg_dns.h>
 #include "sys.h"
 #include "blake2s.h"
-#include "ntun_ecos.h"
+#include "crypto_ecos.h"
+
+static long vfile_read(void *b, size_t n);
 
 #define RET(r) ((r) < 0 ? -(long)(errno ? errno : EIO) : (long)(r))
 
@@ -65,7 +70,7 @@ long x_poll(struct pollfd *fds, unsigned n, int ms)
 
 long x_read(int fd, void *b, size_t n)
 {
-	if (fd >= NTUN_VFD_BASE) return ntun_vfile_read(fd, b, n);
+	if (fd >= CRYPTO_VFD_BASE) return vfile_read(b, n);
 	return RET(read(fd, b, n));
 }
 
@@ -101,14 +106,34 @@ long x_bind(int fd, const struct sockaddr_in *a)
 
 long x_close(int fd)
 {
-	if (fd >= NTUN_VFD_BASE) return 0;
+	if (fd >= CRYPTO_VFD_BASE) return 0;
 	return RET(close(fd));
 }
 
-/* Only the key and resolv.conf exist; both are generated in memory. */
+/* Only /etc/resolv.conf exists: the DNS server from the upstream DHCP,
+ * re-read on every lookup. One reader at a time (dns_resolve). */
+static char resolv[40];
+static size_t resolv_off;
+
 long x_open(const char *path)
 {
-	return ntun_vfile_open(path);
+	struct in_addr a;
+	if (strcmp(path, "/etc/resolv.conf")) return -ENOENT;
+	a.s_addr = DNS_group_get(0);
+	if (!a.s_addr) return -ENOENT;
+	snprintf(resolv, sizeof resolv, "nameserver %s\n", inet_ntoa(a));
+	resolv_off = 0;
+	return CRYPTO_VFD_BASE;
+}
+
+static long vfile_read(void *b, size_t n)
+{
+	size_t len = strlen(resolv);
+	if (resolv_off >= len) return 0;
+	if (n > len - resolv_off) n = len - resolv_off;
+	memcpy(b, resolv + resolv_off, n);
+	resolv_off += n;
+	return (long)n;
 }
 
 long x_now(void)
@@ -123,7 +148,7 @@ void x_sleep(unsigned s)
 
 void x_log(const char *m)
 {
-	ntun_ecos_log(m);
+	diag_printf("%s\n", m);
 }
 
 /* ---------------------------------------------------------------- entropy
@@ -145,7 +170,7 @@ static inline uint32_t cp0_count(void)
 	return c;
 }
 
-void ntun_entropy_add(const void *d, size_t n)
+void crypto_entropy_add(const void *d, size_t n)
 {
 	uint32_t c = cp0_count();
 	if (!pool_ready && pool_ctr == 0) {
@@ -156,8 +181,8 @@ void ntun_entropy_add(const void *d, size_t n)
 	blake2s_update(&pool, (const uint8_t *)d, n);
 }
 
-/* Blocks for about 5 s: call from the ntun thread, never from httpd. */
-void ntun_entropy_collect(void)
+/* Blocks for about 5 s: call from a worker thread, never from httpd. */
+void crypto_entropy_collect(void)
 {
 	uint32_t s[64];
 	int i, j;
@@ -169,14 +194,19 @@ void ntun_entropy_collect(void)
 			 * with interrupt and scheduling latency. */
 			cyg_thread_delay(1);
 		}
-		ntun_entropy_add(s, sizeof s);
+		crypto_entropy_add(s, sizeof s);
 	}
 	{
 		cyg_tick_count_t t = cyg_current_time();
-		ntun_entropy_add(&t, sizeof t);
+		crypto_entropy_add(&t, sizeof t);
 	}
 	blake2s_final(&pool, pool_key);
 	pool_ready = 1;
+}
+
+int crypto_entropy_ready(void)
+{
+	return pool_ready;
 }
 
 long x_getrandom(void *b, size_t n)

@@ -53,13 +53,14 @@ assert 'agent_api' not in page, 'the page announces only /llms.txt; the rest is 
 prof = (repo / 'ra305x_ap_adv/ra305x_router/cfg/cfg_prof.c').read_bytes().decode('latin1')
 reset = prof[prof.index('void CFG_reset_default()'):]
 reset = reset[:reset.index('\n}\n')]
-assert '_KEY' not in reset, 'factory reset must erase device keys (ntun, WireGuard), not carry them over'
+assert '_KEY' not in reset, 'factory reset must erase the WireGuard device key, not carry it over'
 assert '/agent_api.txt' in (web / 'llms.txt').read_text()
 assert page.count('<%') == 1, 'only the state CGI tag may appear; webcomp parses <%'
-for endpoint in ('wifi_state', 'wifi_apply', 'wifi_scan', 'admin_apply', 'system_apply', 'ntun_apply', 'wg_apply'):
+for endpoint in ('wifi_state', 'wifi_apply', 'wifi_scan', 'admin_apply', 'system_apply', 'wg_apply'):
     assert (web / f'{endpoint}.html').is_file(), endpoint
 assert not (web / 'factorySetting.html').exists()
-assert 'NTUN_KEY' not in source, 'the web interface must never read the ntun device private key'
+assert 'WG_KEY' not in source, 'the web interface must never read the WireGuard device private key'
+assert not (web / 'ntun_apply.html').exists()
 cfg = (repo / 'ra305x_ap_adv/ra305x_router/webpages/web.cfg').read_text()
 assert 'llms.txt' in cfg and 'agent_api.txt' in cfg
 print('PASS: HTML form wiring, English interface and local agent instructions')
@@ -96,6 +97,6 @@ print('PASS: bridged AP/repeater cold boot uses DHCP despite a legacy static-IP 
 router = repo / 'ra305x_ap_adv/ra305x_router'
 with tempfile.TemporaryDirectory(prefix='tomada-wg-tests-') as temp:
     binary = Path(temp) / 'wg_host_test'
-    sources = [repo / 'tools/wg_host_test.c', router / 'wg/wg_proto.c'] + [router / 'ntun' / f for f in ('blake2s.c', 'c25519.c', 'aead.c', 'sha2.c')]
-    subprocess.run(['gcc', '-O2', '-std=gnu99', '-Wall', f'-I{router}/ntun', f'-I{router}/wg', '-o', str(binary)] + [str(f) for f in sources], check=True)
+    sources = [repo / 'tools/wg_host_test.c', router / 'wg/wg_proto.c'] + [router / 'crypto' / f for f in ('blake2s.c', 'c25519.c', 'aead.c', 'sha2.c')]
+    subprocess.run(['gcc', '-O2', '-std=gnu99', '-Wall', f'-I{router}/crypto', f'-I{router}/wg', '-o', str(binary)] + [str(f) for f in sources], check=True)
     subprocess.run([str(binary), '--selftest'], check=True)

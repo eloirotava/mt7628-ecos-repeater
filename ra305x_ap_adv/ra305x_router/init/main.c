@@ -58,7 +58,6 @@ extern void DNS_init(void);
 extern void RT_staticrt_allset(void);
 extern void cyg_ntp_start(void);
 extern int  HTTPD_init(void);
-extern void ntun_ecos_start(void);
 extern void wg_ecos_start(void);
 #ifdef CONFIG_USBHOST
 extern int usb_test_init(void);
@@ -162,7 +161,6 @@ int main(void)
 #if (MODULE_HTTPD == 1)
 	HTTPD_init();
 #endif	
-	ntun_ecos_start(); /* remote access; does nothing unless enabled */
 	wg_ecos_start();   /* WireGuard client; does nothing unless enabled */
 #ifdef CONFIG_FILE_SYSTEM
 	usb_fs_dm_init();

@@ -213,14 +213,8 @@
 #define CFG_SYS_LM			CFG_SYS_(24,CFG_TYPE_INT)
 #define CFG_SYS_Login_Flags	CFG_SYS_(25,CFG_TYPE_INT)
 #define CFG_SYS_Language	CFG_SYS_(26,CFG_TYPE_INT)
-/* ntun remote access (ntun/ntun_ecos.c) */
-#define CFG_SYS_NTUN_EN	CFG_SYS_(40,CFG_TYPE_STR)
-#define CFG_SYS_NTUN_HOST	CFG_SYS_(41,CFG_TYPE_STR)
-#define CFG_SYS_NTUN_PORT	CFG_SYS_(42,CFG_TYPE_STR)
-#define CFG_SYS_NTUN_SRVKEY	CFG_SYS_(43,CFG_TYPE_STR)
-#define CFG_SYS_NTUN_LPORT	CFG_SYS_(44,CFG_TYPE_STR)
-#define CFG_SYS_NTUN_KEY	CFG_SYS_(45,CFG_TYPE_STR)
-#define CFG_SYS_NTUN_SEED	CFG_SYS_(46,CFG_TYPE_STR)
+/* Entropy seed (crypto/sys_ecos.c), renewed every boot */
+#define CFG_SYS_RND_SEED	CFG_SYS_(46,CFG_TYPE_STR)
 /* WireGuard client (wg/wg_ecos.c) */
 #define CFG_SYS_WG_EN	CFG_SYS_(50,CFG_TYPE_STR)
 #define CFG_SYS_WG_KEY	CFG_SYS_(51,CFG_TYPE_STR)

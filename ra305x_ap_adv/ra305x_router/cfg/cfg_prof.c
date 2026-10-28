@@ -2396,17 +2396,17 @@ int CFG_telnet_allowed(void)
 
 void CFG_reset_default()
 {
-	char ntun_seed[80];
+	char seed[80];
 
 	diag_printf("Reset the default configuration to flash!\n");
-	/* Device keys (ntun, WireGuard) are erased with everything else: a reset
+	/* Device keys (WireGuard) are erased with everything else: a reset
 	 * device must not keep an identity its servers still trust. Only the
 	 * entropy seed is kept; it authenticates nothing. New keys are made at
 	 * the next boot. */
-	ntun_seed[0] = '\0';
-	CFG_get_str(CFG_SYS_NTUN_SEED, ntun_seed);
+	seed[0] = '\0';
+	CFG_get_str(CFG_SYS_RND_SEED, seed);
 	CFG_init_prof();
-	CFG_set_str(CFG_SYS_NTUN_SEED, ntun_seed);
+	CFG_set_str(CFG_SYS_RND_SEED, seed);
 
 #if defined(RT6352) || defined(MT7620)||defined(CONFIG_MT7628_ASIC)
 	CFG_set_str(CFG_WLN_HT_TxStream, "2");

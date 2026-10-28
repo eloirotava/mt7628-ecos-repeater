@@ -1,6 +1,6 @@
 /* Minimal WireGuard initiator (one peer): handshake and transport data.
  * Protocol: https://www.wireguard.com/protocol/ (Noise_IKpsk2_25519_ChaChaPoly_BLAKE2s).
- * Portable C without I/O; crypto from the ntun sources (blake2s, c25519, aead).
+ * Portable C without I/O; crypto from ../crypto (blake2s, c25519, aead; from the ntun sources).
  * Not implemented: acting as responder, cookie replies (mac2 stays zero). */
 #ifndef WG_PROTO_H
 #define WG_PROTO_H

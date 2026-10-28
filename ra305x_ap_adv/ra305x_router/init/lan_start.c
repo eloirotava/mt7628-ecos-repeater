@@ -327,7 +327,7 @@ int lan_set_ip(void)
     	lan_rescue_alias();
 	/* Opmode 2/3 with a DHCP LAN (factory default is 2 with no Wi-Fi uplink):
 	 * the device is a host on the upstream network and needs the lease's
-	 * gateway for its own traffic (SNTP, WireGuard, ntun). A static LAN
+	 * gateway for its own traffic (SNTP, WireGuard). A static LAN
 	 * without a gateway (future routed mode) adds nothing. */
 	{
 		extern int opmode;
