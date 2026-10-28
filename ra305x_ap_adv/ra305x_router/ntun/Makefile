@@ -4,6 +4,7 @@ include $(TOPDIR)/.config
 include $(TOPDIR)/rules.mak
 
 EXTRA_CFLAGS += -std=gnu99 -DNTUN_ECOS -Dmain=ntun_client_main
+EXTRA_CFLAGS += -I$(shell pwd)/compat
 
 ALL_OBJS = client.o noise.o blake2s.o c25519.o aead.o sha2.o util.o sys_ecos.o ntun_ecos.o
 
