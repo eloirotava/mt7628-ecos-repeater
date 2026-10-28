@@ -2396,16 +2396,19 @@ int CFG_telnet_allowed(void)
 
 void CFG_reset_default()
 {
-	char ntun_key[80], ntun_seed[80];
+	char ntun_key[80], ntun_seed[80], wg_key[80];
 
 	diag_printf("Reset the default configuration to flash!\n"); 
 	/* The ntun device identity survives a factory reset. */
 	ntun_key[0] = ntun_seed[0] = '\0';
 	CFG_get_str(CFG_SYS_NTUN_KEY, ntun_key);
 	CFG_get_str(CFG_SYS_NTUN_SEED, ntun_seed);
+	wg_key[0] = '\0';
+	CFG_get_str(CFG_SYS_WG_KEY, wg_key);
 	CFG_init_prof();
 	CFG_set_str(CFG_SYS_NTUN_KEY, ntun_key);
 	CFG_set_str(CFG_SYS_NTUN_SEED, ntun_seed);
+	CFG_set_str(CFG_SYS_WG_KEY, wg_key);
 
 #if defined(RT6352) || defined(MT7620)||defined(CONFIG_MT7628_ASIC)
 	CFG_set_str(CFG_WLN_HT_TxStream, "2");

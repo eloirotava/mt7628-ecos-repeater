@@ -23,7 +23,7 @@ typedef struct {
 	uint8_t last_init[WG_INIT_LEN];
 	/* current session */
 	int have_session;
-	uint32_t peer_index;
+	uint32_t peer_index, sess_index; /* sess_index: our index for this session */
 	uint8_t send_key[32], recv_key[32];
 	uint64_t send_counter, recv_max;
 	uint32_t replay[WG_REPLAY_BITS / 32];

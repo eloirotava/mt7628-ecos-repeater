@@ -34,6 +34,12 @@ int ntun_ecos_state(void) { return 3; }
 const char *ntun_ecos_status(void) { return "Connected to vps.example:8222"; }
 unsigned ntun_ecos_status_age(void) { return 7; }
 int ntun_ecos_public_key(char hex[65]) { strcpy(hex,"aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11"); return 0; }
+int wg_ecos_state(void) { return 4; }
+const char *wg_ecos_status(void) { return "Connected to 164.163.10.88:51820"; }
+int wg_ecos_public_key(char b64[45]) { strcpy(b64,"cfMOYfs5ZT4ic035jD9qCG4UM/KgpdfZNUNhynZ2KS4="); return 0; }
+long wg_ecos_handshake_age(void) { return 12; }
+void wg_ecos_counters(unsigned long *rx, unsigned long *tx) { *rx = 436; *tx = 380; }
+int wg_b64_decode32(unsigned char out[32], const char *s) { size_t i; (void)out; if (strlen(s) != 44 || s[43] != '=') return -1; for (i = 0; i < 43; i++) if (!strchr("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", s[i])) return -1; return 0; }
 /* IMPLEMENTATION */
 static int wifi_ui_restart(void) { return 0; }
 static int uplink_up=1;
@@ -109,6 +115,26 @@ int main(void) {
  NTUN("1","vps.example","8222",K64,"80");strcpy(cfg[CFG_SYS_ADMPASS],"x");save_fail=1;CGI_ntun_apply(&post);assert(strstr(output,"saving"));assert(reboots==0);
  NTUN("1","vps.example","8222",K64,"80");CGI_ntun_apply(&get);assert(strstr(output,"POST required"));assert(sets==0);
  setup("ap");strcpy(cfg[CFG_SYS_NTUN_EN],"1");strcpy(cfg[CFG_SYS_NTUN_PORT],"8222");CGI_wifi_state(&post);assert(strstr(output,"\"ntun\":{\"enabled\":1"));assert(strstr(output,"\"state\":\"connected\""));assert(strstr(output,"\"public_key\":\"aa11"));
+ /* WireGuard */
+#define WGK "YrZ7dX/8XFcP54QatyBWLDXipzhGnLWtvf1iPwG9bCA="
+#define WG(e,a,k,h,p,ka,psk) do{setup("ap");names[0]="ENABLED";values[0]=(e);names[1]="ADDRESS";values[1]=(a);names[2]="PEER_PUBLIC_KEY";values[2]=(k);names[3]="ENDPOINT";values[3]=(h);names[4]="PORT";values[4]=(p);names[5]="KEEPALIVE";values[5]=(ka);names[6]="PRESHARED_KEY";values[6]=(psk);for(i=7;i<12;i++)names[i]=NULL;}while(0)
+ WG("1","10.8.0.30/24",WGK,"br.example","51820","25","");strcpy(cfg[CFG_SYS_ADMPASS],"admin-pass-1");CGI_wg_apply(&post);assert(!strcmp(output,"OK"));assert(reboots==1);assert(!strcmp(cfg[CFG_SYS_WG_ADDR],"10.8.0.30/24"));assert(!strcmp(cfg[CFG_SYS_WG_PEER],WGK));assert(!strcmp(cfg[CFG_SYS_WG_KEEPALIVE],"25"));assert(!strcmp(cfg[CFG_SYS_WG_PSK],""));
+ WG("1","10.8.0.30/24",WGK,"br.example","51820","25","keep");strcpy(cfg[CFG_SYS_ADMPASS],"x");strcpy(cfg[CFG_SYS_WG_PSK],"stored");CGI_wg_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[CFG_SYS_WG_PSK],"stored"));
+ WG("1","10.8.0.30/24",WGK,"br.example","51820","25",WGK);strcpy(cfg[CFG_SYS_ADMPASS],"x");CGI_wg_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[CFG_SYS_WG_PSK],WGK));
+ WG("1","10.8.0.30/24",WGK,"br.example","51820","25","");strcpy(cfg[CFG_SYS_ADMPASS],"");CGI_wg_apply(&post);assert(strstr(output,"admin password"));assert(sets==0&&reboots==0);
+ WG("1","",WGK,"br.example","51820","25","");strcpy(cfg[CFG_SYS_ADMPASS],"x");CGI_wg_apply(&post);assert(strstr(output,"required"));assert(sets==0);
+ WG("0","","","","51820","25","");CGI_wg_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[CFG_SYS_WG_EN],"0"));
+ WG("1","10.8.0.30",WGK,"br.example","51820","25","");CGI_wg_apply(&post);assert(strstr(output,"address"));assert(sets==0);
+ WG("1","10.8.0.300/24",WGK,"br.example","51820","25","");CGI_wg_apply(&post);assert(strstr(output,"address"));assert(sets==0);
+ WG("1","10.8.0.30/40",WGK,"br.example","51820","25","");CGI_wg_apply(&post);assert(strstr(output,"address"));assert(sets==0);
+ WG("1","10.8.0.30/24","short","br.example","51820","25","");CGI_wg_apply(&post);assert(strstr(output,"peer public key"));assert(sets==0);
+ WG("1","10.8.0.30/24",WGK,"bad host","51820","25","");CGI_wg_apply(&post);assert(strstr(output,"endpoint"));assert(sets==0);
+ WG("1","10.8.0.30/24",WGK,"br.example","0","25","");CGI_wg_apply(&post);assert(strstr(output,"port"));assert(sets==0);
+ WG("1","10.8.0.30/24",WGK,"br.example","51820","9999","");CGI_wg_apply(&post);assert(strstr(output,"keepalive"));assert(sets==0);
+ WG("1","10.8.0.30/24",WGK,"br.example","51820","25","bad");CGI_wg_apply(&post);assert(strstr(output,"preshared"));assert(sets==0);
+ WG("1","10.8.0.30/24",WGK,"br.example","51820","25","");CGI_wg_apply(&get);assert(strstr(output,"POST required"));assert(sets==0);
+ setup("ap");strcpy(cfg[CFG_SYS_WG_EN],"1");strcpy(cfg[CFG_SYS_WG_PSK],"secret-psk");CGI_wifi_state(&post);assert(strstr(output,"\"wireguard\":{\"enabled\":1"));assert(strstr(output,"\"state\":\"connected\""));assert(strstr(output,"\"preshared_key_set\":1"));assert(strstr(output,"\"handshake_age\":12"));assert(!strstr(output,"secret-psk"));
+ puts("PASS: WireGuard validation, preshared key handling, admin requirement, save+restart and state");
  puts("PASS: remote access (ntun) validation, admin requirement, save+restart and state");
  puts("PASS: admin credentials validation, current-password check and save");
  puts("PASS: server validation, AP/repeater mapping, open/mixed security, rollback and JSON escaping");

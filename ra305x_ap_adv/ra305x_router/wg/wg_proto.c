@@ -182,6 +182,7 @@ int wg_consume_response(wg_state *s, const uint8_t *m, size_t len)
 	memcpy(s->send_key, send_key, 32);
 	memcpy(s->recv_key, recv_key, 32);
 	s->peer_index = get32le(m + 4);
+	s->sess_index = s->local_index;
 	s->send_counter = 0;
 	s->recv_max = 0;
 	memset(s->replay, 0, sizeof s->replay);
@@ -232,7 +233,7 @@ long wg_decrypt(wg_state *s, const uint8_t *m, size_t len, uint8_t *out)
 	uint8_t n[12];
 	uint64_t c;
 	if (!s->have_session || len < WG_DATA_HDR + WG_TAG || m[0] != 4) return -1;
-	if (get32le(m + 4) != s->local_index) return -1;
+	if (get32le(m + 4) != s->sess_index) return -1;
 	c = get64le(m + 8);
 	if (replay_check(s, c)) return -1;
 	nonce_ctr(n, c);

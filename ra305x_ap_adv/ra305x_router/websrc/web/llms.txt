@@ -46,6 +46,15 @@ The device can keep an encrypted reverse tunnel (ntun, Noise IK; https://github.
 3. POST /ntun_apply.html ENABLED=1&HOST=<server>&PORT=<port, ntun default 8222>&SERVER_KEY=<server public key, 64 hex>&LOCAL_PORT=<80 for the web page or 23 for Telnet>. The device saves and restarts.
 4. After about one minute, GET /wifi_state.html: ntun.state "connected" means the tunnel is up; ntun.status explains errors (for example an unregistered device key).
 
+## Optional: WireGuard
+
+The device can join a WireGuard server as a peer (initiator only, one server). Off by default; needs an admin password. The page and Telnet are then reachable at the tunnel address.
+
+1. GET /wifi_state.html and read wireguard.public_key (generated on the device; survives factory resets; the private key never leaves it).
+2. On the server, add that key as a peer with AllowedIPs = <tunnel address>/32.
+3. POST /wg_apply.html ENABLED=1&ADDRESS=<tunnel address/prefix, e.g. 10.8.0.30/24>&PEER_PUBLIC_KEY=<server public key>&ENDPOINT=<server host>&PORT=<51820>&KEEPALIVE=25 . The device saves and restarts.
+4. After about one minute, GET /wifi_state.html: wireguard.state "connected" and a small wireguard.handshake_age mean the tunnel is up. The device needs Internet access for SNTP (pool.ntp.org) before its first handshake.
+
 ## Recovery
 
 - Lost credentials or a broken configuration: hold the reset button for more than 4 seconds, then start again from factory defaults.

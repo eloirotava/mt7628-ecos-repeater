@@ -156,10 +156,32 @@ const submit = f => f.els['wifi-form'].listeners.submit({preventDefault() {}});
   f = fixture(withNtun({enabled: 1, state: 'error', status: 'The server closed the handshake: register this device\'s public key on the server'}));
   assert.strictEqual(f.els['st-ntun'].className, 'bad'); assert(f.els['st-ntun'].textContent.includes('register'));
 
+  /* WireGuard */
+  const WGK = 'YrZ7dX/8XFcP54QatyBWLDXipzhGnLWtvf1iPwG9bCA=';
+  const withWg = w => Object.assign({}, base, {admin_password_set: 1, wireguard: Object.assign({enabled: 0, address: '', peer_public_key: '', endpoint: '', port: 51820, keepalive: 25, preshared_key_set: 0, public_key: 'cfMO=', state: 'off', status: 'Disabled', handshake_age: -1, rx_bytes: 0, tx_bytes: 0}, w)});
+  f = fixture(withWg({}));
+  assert.strictEqual(f.els['st-wg'].textContent, 'Off'); assert.strictEqual(f.els['wg-public'].textContent, 'cfMO='); assert.strictEqual(f.els['wg-port'].value, '51820'); assert.strictEqual(f.els['wg-keepalive'].value, '25');
+  const wgSubmit = f.els['wg-form'].listeners.submit;
+  f.els['wg-enabled'].checked = true; await wgSubmit({preventDefault() {}}); assert.strictEqual(f.posts().length, 0); assert(f.els['wg-msg'].textContent.includes('tunnel address'));
+  f.els['wg-address'].value = '10.8.0.30'; f.els['wg-peer'].value = WGK; f.els['wg-endpoint'].value = 'br.example';
+  await wgSubmit({preventDefault() {}}); assert.strictEqual(f.posts().length, 0); assert(f.els['wg-msg'].textContent.includes('IPv4/prefix'));
+  f.els['wg-address'].value = '10.8.0.30/24'; f.els['wg-peer'].value = 'short'; await wgSubmit({preventDefault() {}}); assert.strictEqual(f.posts().length, 0);
+  f.els['wg-peer'].value = WGK; await wgSubmit({preventDefault() {}});
+  p = f.posts()[0]; assert.strictEqual(p.url, '/wg_apply.html');
+  assert.strictEqual(p.options.body.get('ADDRESS'), '10.8.0.30/24'); assert.strictEqual(p.options.body.get('PEER_PUBLIC_KEY'), WGK); assert.strictEqual(p.options.body.get('PRESHARED_KEY'), ''); assert.strictEqual(p.options.body.get('KEEPALIVE'), '25');
+  f = fixture(withWg({preshared_key_set: 1, enabled: 1, address: '10.8.0.30/24', peer_public_key: WGK, endpoint: 'br.example'}));
+  assert(f.els['wg-psk-hint'].textContent.includes('keep'));
+  await f.els['wg-form'].listeners.submit({preventDefault() {}}); assert.strictEqual(f.posts()[0].options.body.get('PRESHARED_KEY'), 'keep');
+  f = fixture(Object.assign(withWg({}), {admin_password_set: 0}));
+  f.els['wg-enabled'].checked = true; f.els['wg-address'].value = '10.8.0.30/24'; f.els['wg-peer'].value = WGK; f.els['wg-endpoint'].value = 'br.example';
+  await f.els['wg-form'].listeners.submit({preventDefault() {}}); assert.strictEqual(f.posts().length, 0); assert(f.els['wg-msg'].textContent.includes('admin password'));
+  f = fixture(withWg({enabled: 1, state: 'connected', status: 'Connected to 164.163.10.88:51820', handshake_age: 12, rx_bytes: 2048, tx_bytes: 512}));
+  assert.strictEqual(f.els['st-wg'].className, 'ok'); assert(f.els['st-wg'].textContent.includes('handshake 12 s ago')); assert(f.els['st-wg'].textContent.includes('2.0 KB'));
+
   /* System actions need confirmation */
   f = fixture(base, {confirm: false}); await f.els.factory.listeners.click(); assert.strictEqual(f.posts().length, 0);
   f = fixture(base); await f.els.factory.listeners.click(); assert.strictEqual(f.posts()[0].options.body.get('ACTION'), 'factory');
   f = fixture(base); await f.els.reboot.listeners.click(); assert.strictEqual(f.posts()[0].options.body.get('ACTION'), 'reboot');
 
-  console.log('PASS: status rendering, scan parsing and selection, Wi-Fi, admin and remote access validation, POST fields, system actions');
+  console.log('PASS: status rendering, scan parsing and selection, Wi-Fi, admin, remote access and WireGuard validation, POST fields, system actions');
 })().catch(e => { console.error(e); process.exitCode = 1; });

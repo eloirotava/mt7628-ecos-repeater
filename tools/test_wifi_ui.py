@@ -52,7 +52,7 @@ assert '<title>MT7628KN Wi-Fi Extender</title>' in page and 'Smart Plug' not in 
 assert 'agent_api' not in page, 'the page announces only /llms.txt; the rest is discovered from it'
 assert '/agent_api.txt' in (web / 'llms.txt').read_text()
 assert page.count('<%') == 1, 'only the state CGI tag may appear; webcomp parses <%'
-for endpoint in ('wifi_state', 'wifi_apply', 'wifi_scan', 'admin_apply', 'system_apply', 'ntun_apply'):
+for endpoint in ('wifi_state', 'wifi_apply', 'wifi_scan', 'admin_apply', 'system_apply', 'ntun_apply', 'wg_apply'):
     assert (web / f'{endpoint}.html').is_file(), endpoint
 assert not (web / 'factorySetting.html').exists()
 assert 'NTUN_KEY' not in source, 'the web interface must never read the ntun device private key'

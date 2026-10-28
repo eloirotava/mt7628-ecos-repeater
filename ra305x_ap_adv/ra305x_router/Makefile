@@ -72,7 +72,7 @@ all: do-it-all
 
 SUBDIRS = init cfg
 DRVSUBDIRS = drivers gpio
-APPSUBDIRS = cli lib tcpip ntun
+APPSUBDIRS = cli lib tcpip ntun wg
 
 # memory debug info log: default off
 #CFLAGS += -DMEM_DEBUG_LEVEL_1

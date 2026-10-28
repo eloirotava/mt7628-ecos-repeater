@@ -67,6 +67,7 @@ a{color:var(--accent)}
 <dt>Admin password</dt><dd id="st-admin">–</dd>
 <dt>Telnet</dt><dd id="st-telnet">–</dd>
 <dt>Remote access</dt><dd id="st-ntun">–</dd>
+<dt>WireGuard</dt><dd id="st-wg">–</dd>
 <dt>Uptime</dt><dd id="st-uptime">–</dd>
 </dl>
 <p id="st-apply" class="msg"></p>
@@ -153,6 +154,35 @@ a{color:var(--accent)}
 </section>
 </form>
 
+<form id="wg-form" novalidate>
+<section aria-labelledby="h-wg" id="wireguard">
+<h2 id="h-wg">WireGuard</h2>
+<p class="hint">Connects this device to a WireGuard server as a peer: the page and Telnet become reachable at the tunnel address. Requires an admin password. Saving restarts the device.</p>
+<label for="wg-public">This device's public key</label>
+<p id="wg-public" class="key">–</p>
+<div class="row"><button type="button" id="wg-copy" class="secondary">Copy public key</button></div>
+<small>Add this key as a peer on the server, with the tunnel address below as its allowed IP. The private key is generated on the device and never leaves it.</small>
+<label class="check"><input type="checkbox" id="wg-enabled"> Enable WireGuard</label>
+<label for="wg-address">Tunnel address</label>
+<input id="wg-address" maxlength="18" autocomplete="off" spellcheck="false" placeholder="10.8.0.30/24">
+<small>This device's address and prefix inside the tunnel; the whole prefix is routed through it.</small>
+<label for="wg-peer">Server public key</label>
+<input id="wg-peer" maxlength="44" autocomplete="off" spellcheck="false" placeholder="44 base64 characters">
+<label for="wg-endpoint">Server endpoint</label>
+<input id="wg-endpoint" maxlength="63" autocomplete="off" spellcheck="false" placeholder="host name or IPv4 address">
+<label for="wg-port">Server port</label>
+<input id="wg-port" inputmode="numeric" maxlength="5">
+<label for="wg-keepalive">Persistent keepalive (seconds)</label>
+<input id="wg-keepalive" inputmode="numeric" maxlength="4">
+<small>25 keeps the tunnel open through NAT; 0 disables.</small>
+<label for="wg-psk">Preshared key (optional)</label>
+<input id="wg-psk" type="password" maxlength="44" autocomplete="off" spellcheck="false">
+<small id="wg-psk-hint">Leave empty for none.</small>
+<div class="row"><button type="submit">Save &amp; restart</button></div>
+<p id="wg-msg" class="msg" role="status" aria-live="polite"></p>
+</section>
+</form>
+
 <section aria-labelledby="h-system">
 <h2 id="h-system">System</h2>
 <div class="row">
@@ -187,6 +217,10 @@ function uptime(s) {
   var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
   return (d ? d + ' d ' : '') + (d || h ? h + ' h ' : '') + m + ' min';
 }
+function bytes(n) {
+  n = n || 0;
+  return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
+}
 function securityName(s) { return s === 'OPEN' ? 'open' : s === 'WPAPSKWPA2PSK' ? 'mixed' : 'wpa2'; }
 function isRepeater() { return wifiForm.querySelector('input[name=MODE]:checked').value === 'repeater'; }
 
@@ -213,6 +247,16 @@ function renderStatus() {
   ntEl.textContent = !nt.enabled ? 'Off' : (nt.status || nt.state || '–');
   ntEl.className = !nt.enabled ? '' : nt.state === 'connected' ? 'ok' : nt.state === 'error' ? 'bad' : '';
   $('ntun-public').textContent = nt.public_key || 'Generating… reload in a few seconds.';
+  var wg = state.wireguard || {};
+  var wgEl = $('st-wg');
+  if (!wg.enabled) { wgEl.textContent = 'Off'; wgEl.className = ''; }
+  else {
+    wgEl.textContent = (wg.status || wg.state || '–') + (wg.handshake_age >= 0 ? ' · handshake ' + wg.handshake_age + ' s ago' : '') +
+      (wg.state === 'connected' ? ' · ↓ ' + bytes(wg.rx_bytes) + ' ↑ ' + bytes(wg.tx_bytes) : '');
+    wgEl.className = wg.state === 'connected' ? 'ok' : wg.state === 'error' ? 'bad' : '';
+  }
+  $('wg-public').textContent = wg.public_key || 'Generating… reload in a few seconds.';
+  $('wg-psk-hint').textContent = wg.preshared_key_set ? 'A preshared key is set; leave empty to keep it.' : 'Leave empty for none.';
   $('admin-banner').hidden = !!state.admin_password_set;
   $('current-field').hidden = !state.admin_password_set;
   if (state.busy) msg($('st-apply'), 'Applying settings…');
@@ -235,6 +279,13 @@ function fillForms() {
   $('ntun-port').value = String(nt.port || 8222);
   $('ntun-key').value = nt.server_key || '';
   $('ntun-local').value = nt.local_port === 23 ? '23' : '80';
+  var wg = state.wireguard || {};
+  $('wg-enabled').checked = !!wg.enabled;
+  $('wg-address').value = wg.address || '';
+  $('wg-peer').value = wg.peer_public_key || '';
+  $('wg-endpoint').value = wg.endpoint || '';
+  $('wg-port').value = String(wg.port || 51820);
+  $('wg-keepalive').value = String(wg.keepalive != null && wg.port ? wg.keepalive : 25);
   update();
 }
 
@@ -422,6 +473,42 @@ $('ntun-form').addEventListener('submit', async function (e) {
   } catch (err) {
     if (err.name !== 'TimeoutError' && err.name !== 'TypeError') return msg(out, err.message, 'bad');
   }
+  msg(out, 'Saved. Restarting… reload this page in about one minute.', 'good');
+});
+
+$('wg-copy').addEventListener('click', async function () {
+  var key = (state.wireguard || {}).public_key, out = $('wg-msg');
+  if (!key) return msg(out, 'The device key is not ready yet.', 'bad');
+  try { await navigator.clipboard.writeText(key); msg(out, 'Public key copied.', 'good'); }
+  catch (e) { msg(out, 'Copy failed; select the key above and copy it manually.', 'bad'); }
+});
+
+$('wg-form').addEventListener('submit', async function (e) {
+  e.preventDefault();
+  var out = $('wg-msg'), wg = state.wireguard || {};
+  var en = $('wg-enabled').checked, addr = $('wg-address').value.trim(), peer = $('wg-peer').value.trim();
+  var host = $('wg-endpoint').value.trim(), port = $('wg-port').value.trim(), ka = $('wg-keepalive').value.trim(), psk = $('wg-psk').value.trim();
+  var key44 = /^[A-Za-z0-9+\/]{43}=$/;
+  if (addr && !/^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/.test(addr)) return msg(out, 'Tunnel address: IPv4/prefix, for example 10.8.0.30/24.', 'bad');
+  if (peer && !key44.test(peer)) return msg(out, 'Server public key: 44 base64 characters ending in “=”.', 'bad');
+  if (host && !/^[A-Za-z0-9.-]{1,63}$/.test(host)) return msg(out, 'Server endpoint: a host name or IPv4 address.', 'bad');
+  if (!/^\d{1,5}$/.test(port) || +port < 1 || +port > 65535) return msg(out, 'Server port: 1–65535.', 'bad');
+  if (!/^\d{1,4}$/.test(ka) || +ka > 3600) return msg(out, 'Keepalive: 0–3600 seconds.', 'bad');
+  if (psk && !key44.test(psk)) return msg(out, 'Preshared key: 44 base64 characters ending in “=”.', 'bad');
+  if (en && (!addr || !peer || !host)) return msg(out, 'Enter the tunnel address, server public key and endpoint to enable WireGuard.', 'bad');
+  if (en && !state.admin_password_set) return msg(out, 'Set an admin password first (Administration).', 'bad');
+  if (!window.confirm('Save WireGuard settings and restart the device?')) return;
+  var body = new URLSearchParams();
+  body.set('ENABLED', en ? '1' : '0'); body.set('ADDRESS', addr); body.set('PEER_PUBLIC_KEY', peer);
+  body.set('ENDPOINT', host); body.set('PORT', port); body.set('KEEPALIVE', ka);
+  body.set('PRESHARED_KEY', psk || (wg.preshared_key_set ? 'keep' : ''));
+  try {
+    var text = await post('/wg_apply.html', body, 5000);
+    if (text !== 'OK') throw new Error(text.replace(/^ERROR:\s*/, ''));
+  } catch (err) {
+    if (err.name !== 'TimeoutError' && err.name !== 'TypeError') return msg(out, err.message, 'bad');
+  }
+  $('wg-psk').value = '';
   msg(out, 'Saved. Restarting… reload this page in about one minute.', 'good');
 });
 
