@@ -45,7 +45,7 @@ parser.feed(page)
 script = page[page.rindex('<script>'):]
 js_ids = {i for i in re.findall(r"\$\('([^']+)'\)", script) if not i.endswith('-')}
 assert js_ids <= parser.ids, js_ids - parser.ids
-assert parser.modes == {'ap', 'repeater'}
+assert parser.modes == {'ap', 'repeater', 'router'}
 assert 'lang="en"' in page and not re.search('[\u3400-\u9fff]', page)
 assert 'href="/llms.txt"' in page and (web / 'llms.txt').is_file() and (web / 'agent_api.txt').is_file()
 assert '<title>MT7628KN Wi-Fi Extender</title>' in page and 'Smart Plug' not in page

@@ -44,6 +44,12 @@ tbody tr{cursor:pointer}tbody tr:hover,tbody tr:focus{background:var(--bg)}
 .check{display:flex;gap:10px;align-items:center;font-weight:600;margin:12px 0}.check input{width:auto}
 footer{color:var(--muted);font-size:.85rem;text-align:center;margin-top:24px}
 a{color:var(--accent)}
+nav.tabs{display:flex;gap:4px;flex-wrap:wrap;margin:16px 0 0;border-bottom:1px solid var(--line)}
+nav.tabs button{background:transparent;color:var(--muted);border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;padding:8px 14px;font-weight:600}
+nav.tabs button[aria-selected=true]{background:var(--card);color:var(--fg);border-color:var(--line);margin-bottom:-1px}
+fieldset{border:1px solid var(--line);border-radius:8px;padding:12px;margin:12px 0}
+legend{font-weight:600;padding:0 4px}
+.checks{display:flex;flex-wrap:wrap;gap:4px 16px}.checks .check{margin:4px 0;font-weight:400}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -55,8 +61,17 @@ a{color:var(--accent)}
 <p id="subtitle">Firmware information unavailable</p></div>
 </header>
 
+<nav class="tabs" role="tablist" aria-label="Settings">
+<button type="button" role="tab" data-tab="status">Status</button>
+<button type="button" role="tab" data-tab="wireless">Wireless</button>
+<button type="button" role="tab" data-tab="networks">Networks</button>
+<button type="button" role="tab" data-tab="vpn">VPN</button>
+<button type="button" role="tab" data-tab="system">System</button>
+</nav>
+
 <p id="admin-banner" class="banner" hidden>No admin password is set. Anyone connected to this device can change its settings. Set one under <a href="#admin">Administration</a>.</p>
 
+<div class="tab" id="tab-status" role="tabpanel">
 <section aria-labelledby="h-status">
 <h2 id="h-status">Status</h2>
 <dl>
@@ -67,16 +82,21 @@ a{color:var(--accent)}
 <dt>Admin password</dt><dd id="st-admin">–</dd>
 <dt>Telnet</dt><dd id="st-telnet">–</dd>
 <dt>WireGuard</dt><dd id="st-wg">–</dd>
+<dt>Networks</dt><dd id="st-nets">–</dd>
 <dt>Uptime</dt><dd id="st-uptime">–</dd>
 </dl>
 <p id="st-apply" class="msg"></p>
 </section>
 
+</div>
+
+<div class="tab" id="tab-wireless" role="tabpanel">
 <form id="wifi-form" novalidate>
 <section aria-labelledby="h-mode">
 <h2 id="h-mode">Uplink</h2>
 <label class="radio"><input type="radio" name="MODE" value="ap"><span><strong>Ethernet (access point)</strong><small>Cable to your router; this device provides Wi-Fi.</small></span></label>
 <label class="radio"><input type="radio" name="MODE" value="repeater"><span><strong>Wi-Fi (repeater)</strong><small>Connects to an existing 2.4 GHz network and extends it. Unplug the Ethernet cable first to avoid a network loop.</small></span></label>
+<label class="radio"><input type="radio" name="MODE" value="router"><span><strong>Wi-Fi (router)</strong><small>Connects to an existing 2.4 GHz network as its Internet uplink and runs its own network behind NAT; the Ethernet port joins that network. Needed for routed extra networks.</small></span></label>
 <div id="uplink-fields" hidden>
 <div class="row"><button type="button" id="scan" class="secondary">Scan for networks</button></div>
 <p id="scan-msg" class="msg"></p>
@@ -88,6 +108,15 @@ a{color:var(--accent)}
 <label for="uplink-password">Password</label>
 <input id="uplink-password" type="password" maxlength="63" autocomplete="new-password">
 <small id="uplink-password-hint">8–63 ASCII characters. Leave empty to keep the saved password for this network.</small>
+<label for="uplink-bssid">Access point (BSSID, optional)</label>
+<input id="uplink-bssid" maxlength="17" autocomplete="off" spellcheck="false" placeholder="aa:bb:cc:dd:ee:ff">
+<small>Pins the uplink to one access point when several share the network name.</small>
+</div>
+<div id="router-fields" hidden>
+<label for="lan-address">This device's network (address/prefix)</label>
+<input id="lan-address" maxlength="18" autocomplete="off" spellcheck="false" placeholder="10.0.1.1/24">
+<label class="check"><input type="checkbox" id="lan-dhcp" checked> Hand out addresses (DHCP) on this network and the Ethernet port</label>
+<small>Changing to or from router mode restarts the device. Keep a way back: the rescue address 192.168.11.1 on the Ethernet port, or WireGuard.</small>
 </div>
 </section>
 
@@ -111,6 +140,24 @@ a{color:var(--accent)}
 </section>
 </form>
 
+</div>
+
+<div class="tab" id="tab-networks" role="tabpanel">
+<form id="networks-form" novalidate>
+<section aria-labelledby="h-networks">
+<h2 id="h-networks">Wi-Fi networks</h2>
+<p class="hint">Network 1 is the device network set under Wireless. Networks 2–4 are extra SSIDs on the same radio and channel: bridged with network 1, or — in router mode — routed with their own address range, DHCP and the access you allow below.</p>
+<label for="net-count">Active networks</label>
+<select id="net-count"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
+<label class="check"><input type="checkbox" id="net1-isolate"> Network 1: clients cannot see each other</label>
+<div id="net-list"></div>
+<div class="row"><button type="submit">Save &amp; restart</button></div>
+<p id="networks-msg" class="msg" role="status" aria-live="polite"></p>
+</section>
+</form>
+</div>
+
+<div class="tab" id="tab-system" role="tabpanel">
 <form id="admin-form" novalidate>
 <section aria-labelledby="h-admin" id="admin">
 <h2 id="h-admin">Administration</h2>
@@ -131,6 +178,9 @@ a{color:var(--accent)}
 </section>
 </form>
 
+</div>
+
+<div class="tab" id="tab-vpn" role="tabpanel">
 <form id="wg-form" novalidate>
 <section aria-labelledby="h-wg" id="wireguard">
 <h2 id="h-wg">WireGuard</h2>
@@ -160,6 +210,9 @@ a{color:var(--accent)}
 </section>
 </form>
 
+</div>
+
+<div class="tab" id="tab-system2" role="tabpanel">
 <form id="startup-form" novalidate>
 <section aria-labelledby="h-startup" id="startup">
 <h2 id="h-startup">Startup script</h2>
@@ -181,6 +234,8 @@ a{color:var(--accent)}
 <p id="system-msg" class="msg" role="status" aria-live="polite"></p>
 </section>
 
+</div>
+
 <footer>Instructions for agents: <a href="/llms.txt">/llms.txt</a></footer>
 </main>
 <script id="wifi-state" type="application/json"><% CGI_WIFI_STATE(); %></script>
@@ -191,6 +246,18 @@ var $ = function (id) { return document.getElementById(id); };
 var state = {};
 try { state = JSON.parse($('wifi-state').textContent); } catch (e) {}
 var wifiForm = $('wifi-form'), adminForm = $('admin-form');
+var TABS = {status: ['tab-status'], wireless: ['tab-wireless'], networks: ['tab-networks'], vpn: ['tab-vpn'], system: ['tab-system', 'tab-system2']};
+function showTab(name) {
+  if (!TABS[name]) name = 'status';
+  Object.keys(TABS).forEach(function (t) { TABS[t].forEach(function (id) { $(id).hidden = t !== name; }); });
+  Array.prototype.forEach.call(document.querySelectorAll('nav.tabs button'), function (b) { b.setAttribute('aria-selected', String(b.getAttribute('data-tab') === name)); });
+}
+Array.prototype.forEach.call(document.querySelectorAll('nav.tabs button'), function (b) {
+  b.addEventListener('click', function () { var t = b.getAttribute('data-tab'); try { history.replaceState(null, '', '#' + t); } catch (e) {} showTab(t); });
+});
+function tabFromHash() { var h = (location.hash || '').replace('#', ''); showTab(h === 'admin' ? 'system' : h); }
+tabFromHash();
+if (window.addEventListener) window.addEventListener('hashchange', tabFromHash);
 
 for (var n = 1; n <= 13; n++) {
   var o = document.createElement('option'); o.value = String(n); o.textContent = String(n); $('channel').appendChild(o);
@@ -209,13 +276,16 @@ function bytes(n) {
   return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
 }
 function securityName(s) { return s === 'OPEN' ? 'open' : s === 'WPAPSKWPA2PSK' ? 'mixed' : 'wpa2'; }
-function isRepeater() { return wifiForm.querySelector('input[name=MODE]:checked').value === 'repeater'; }
+function currentMode() { return wifiForm.querySelector('input[name=MODE]:checked').value; }
+function isRepeater() { var m = currentMode(); return m === 'repeater' || m === 'router'; } /* has a Wi-Fi uplink */
 
 function renderStatus() {
-  var rep = state.mode === 'repeater';
+  var rep = state.mode === 'repeater' || state.mode === 'router';
+  var nets = (state.networks || []).filter(function (n) { return n.enabled; });
+  $('st-nets').textContent = nets.length ? nets.map(function (n) { return n.ssid + (n.address ? ' (' + n.address + ')' : ''); }).join(', ') : '–';
   var built = state.build ? new Date(state.build * 1000).toISOString().slice(0, 10) : '';
   $('subtitle').textContent = 'Firmware ' + (state.version || '?') + (built ? ' · built ' + built : '');
-  $('st-mode').textContent = rep ? 'Wi-Fi repeater' : 'Ethernet access point';
+  $('st-mode').textContent = state.mode === 'router' ? 'Wi-Fi router (' + ((state.lan || {}).address || '') + ')' : rep ? 'Wi-Fi repeater' : 'Ethernet access point';
   $('st-ssid').textContent = (state.ssid || '–') + (state.device_security === 'open' ? ' (open)' : ' (WPA2)');
   var up = $('st-uplink');
   if (!rep) { up.textContent = 'Ethernet'; up.className = ''; }
@@ -247,7 +317,7 @@ function renderStatus() {
 }
 
 function fillForms() {
-  var mode = state.mode === 'repeater' ? 'repeater' : 'ap';
+  var mode = state.mode === 'repeater' || state.mode === 'router' ? state.mode : 'ap';
   wifiForm.querySelector('input[name=MODE][value=' + mode + ']').checked = true;
   $('ssid').value = state.ssid || '';
   $('device-security').value = state.device_security === 'open' ? 'open' : 'wpa2';
@@ -255,6 +325,9 @@ function fillForms() {
   $('uplink').value = state.uplink && state.uplink !== 'ECOSAPClient' ? state.uplink : '';
   $('uplink-security').value = securityName(state.security);
   $('admin-user').value = state.admin_user || 'admin';
+  $('lan-address').value = (state.lan || {}).address || '10.0.1.1/24';
+  $('lan-dhcp').checked = state.lan ? !!state.lan.dhcp : true;
+  fillNetworks();
   var wg = state.wireguard || {};
   $('wg-enabled').checked = !!wg.enabled;
   $('wg-address').value = wg.address || '';
@@ -268,6 +341,7 @@ function fillForms() {
 function update() {
   var rep = isRepeater();
   $('uplink-fields').hidden = !rep;
+  $('router-fields').hidden = currentMode() !== 'router';
   var open = $('device-security').value === 'open';
   $('device-password-field').hidden = open;
   $('password-hint').textContent = '8–63 ASCII characters.' + (state.device_security === 'wpa2' ? ' Leave empty to keep the current password.' : '');
@@ -275,7 +349,7 @@ function update() {
   $('uplink-password').disabled = upOpen;
   $('uplink-password-hint').hidden = upOpen;
   $('channel').disabled = rep;
-  $('channel-hint').textContent = rep ? 'In repeater mode the channel follows the selected network.' : '2.4 GHz channel for this network.';
+  $('channel-hint').textContent = rep ? 'With a Wi-Fi uplink the channel follows the selected network.' : '2.4 GHz channel for this network.';
 }
 wifiForm.addEventListener('change', update);
 
@@ -373,10 +447,16 @@ wifiForm.addEventListener('submit', async function (e) {
   if (!ssidOK(ssid) || (rep && !ssidOK(uplink))) return msg(out, 'Network names must be 1–32 bytes without control characters.', 'bad');
   if (!open && (pw ? !asciiKey(pw) : state.device_security !== 'wpa2')) return msg(out, 'Enter a device network password of 8–63 ASCII characters.', 'bad');
   if (rep && !upOpen && (upPw ? !asciiKey(upPw) : uplink !== state.uplink)) return msg(out, 'Enter the uplink password (8–63 ASCII characters).', 'bad');
-  if (!window.confirm(rep ? 'Apply repeater mode? Unplug the Ethernet cable first. Wi-Fi will restart.' : 'Apply access point mode? Keep the Ethernet cable connected. Wi-Fi will restart.')) return;
+  var mode = currentMode(), restart = mode === 'router' || state.mode === 'router';
+  var lanAddr = $('lan-address').value.trim(), bssid = $('uplink-bssid').value.trim();
+  if (mode === 'router' && !/^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/.test(lanAddr)) return msg(out, 'Device network: IPv4/prefix, for example 10.0.1.1/24.', 'bad');
+  if (rep && bssid && !/^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$/.test(bssid)) return msg(out, 'BSSID: aa:bb:cc:dd:ee:ff, or leave empty.', 'bad');
+  if (!window.confirm(mode === 'router' ? 'Apply router mode? The device restarts with its own network ' + lanAddr + '.' : mode === 'repeater' ? 'Apply repeater mode? Unplug the Ethernet cable first. Wi-Fi will restart.' : 'Apply access point mode? Keep the Ethernet cable connected. Wi-Fi will restart.' + (restart ? ' The device restarts.' : ''))) return;
   var body = new URLSearchParams();
   body.set('SAVE', '1');
-  body.set('MODE', rep ? 'repeater' : 'ap');
+  body.set('MODE', mode);
+  if (mode === 'router') { body.set('LAN_ADDRESS', lanAddr); body.set('LAN_DHCP', $('lan-dhcp').checked ? '1' : '0'); }
+  if (rep) body.set('UPLINK_BSSID', bssid);
   body.set('SSID', ssid);
   body.set('DEVICE_SECURITY', open ? 'open' : 'wpa2');
   body.set('PASSWORD', open ? '' : pw);
@@ -391,6 +471,7 @@ wifiForm.addEventListener('submit', async function (e) {
   } catch (err) {
     if (err.name !== 'TimeoutError' && err.name !== 'TypeError') { msg(out, err.message, 'bad'); button.disabled = false; return; }
   }
+  if (restart) { msg(out, 'Saved. Restarting… reconnect and reload this page in about one minute.', 'good'); button.disabled = false; return; }
   var ok = false;
   for (var i = 0; i < 25; i++) {
     await delay(2000);
@@ -422,6 +503,99 @@ adminForm.addEventListener('submit', async function (e) {
     msg(out, pw ? 'Saved. Your browser will ask you to sign in with the new credentials.' : 'Saved. The admin password was removed.', 'good');
     await delay(1500); refresh();
   } catch (err) { msg(out, err.message || 'Could not save the credentials.', 'bad'); }
+});
+
+var REACH = [['device', 'This device'], ['lan', 'Network 1 / Ethernet'], ['net2', 'Network 2'], ['net3', 'Network 3'], ['net4', 'Network 4'], ['wg', 'WireGuard']];
+(function () {
+  var list = $('net-list');
+  for (var n = 2; n <= 4; n++) {
+    var fs = document.createElement('fieldset'); fs.id = 'net' + n + '-box';
+    var lg = document.createElement('legend'); lg.textContent = 'Network ' + n; fs.appendChild(lg);
+    function add(el) { fs.appendChild(el); return el; }
+    function input(id, label, attrs) {
+      var l = document.createElement('label'); l.htmlFor = id; l.textContent = label; add(l);
+      var i = document.createElement('input'); i.id = id; Object.keys(attrs || {}).forEach(function (k) { i[k] = attrs[k]; }); return add(i);
+    }
+    function check(id, label) {
+      var l = document.createElement('label'); l.className = 'check';
+      var c = document.createElement('input'); c.type = 'checkbox'; c.id = id; l.appendChild(c); l.appendChild(document.createTextNode(' ' + label)); return add(l);
+    }
+    input('net' + n + '-ssid', 'Network name (SSID)', {maxLength: 32, spellcheck: false, autocomplete: 'off'});
+    var sl = document.createElement('label'); sl.htmlFor = 'net' + n + '-security'; sl.textContent = 'Security'; add(sl);
+    var sel = document.createElement('select'); sel.id = 'net' + n + '-security';
+    [['open', 'Open (no password)'], ['wpa2', 'WPA2-Personal (AES)']].forEach(function (o) { var op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; sel.appendChild(op); });
+    add(sel);
+    input('net' + n + '-password', 'Password', {type: 'password', maxLength: 63, autocomplete: 'new-password', placeholder: 'leave empty to keep the saved one'});
+    check('net' + n + '-routed', 'Routed: own address range and DHCP (router mode)');
+    input('net' + n + '-address', 'Address/prefix', {maxLength: 18, spellcheck: false, autocomplete: 'off', placeholder: '10.0.' + n + '.1/24'});
+    check('net' + n + '-internet', 'Internet access');
+    var p = document.createElement('p'); p.className = 'hint'; p.textContent = 'May reach:'; add(p);
+    var box = document.createElement('div'); box.className = 'checks'; box.id = 'net' + n + '-reach'; add(box);
+    REACH.forEach(function (rr) {
+      if (rr[0] === 'net' + n) return;
+      var l = document.createElement('label'); l.className = 'check';
+      var c = document.createElement('input'); c.type = 'checkbox'; c.id = 'net' + n + '-reach-' + rr[0];
+      l.appendChild(c); l.appendChild(document.createTextNode(' ' + rr[1])); box.appendChild(l);
+    });
+    check('net' + n + '-isolate', 'Clients cannot see each other');
+    list.appendChild(fs);
+  }
+}());
+function netUpdate() {
+  var count = +$('net-count').value, router = state.mode === 'router';
+  for (var n = 2; n <= 4; n++) {
+    $('net' + n + '-box').hidden = n > count;
+    var routed = $('net' + n + '-routed').checked && router;
+    $('net' + n + '-routed').disabled = !router;
+    $('net' + n + '-address').disabled = !routed;
+    $('net' + n + '-internet').disabled = !routed;
+    REACH.forEach(function (rr) { var c = $('net' + n + '-reach-' + rr[0]); if (c) c.disabled = !routed; });
+    $('net' + n + '-password').disabled = $('net' + n + '-security').value === 'open';
+  }
+}
+function fillNetworks() {
+  var nets = state.networks || [];
+  $('net-count').value = String(Math.max(1, nets.filter(function (x) { return x.enabled; }).length));
+  $('net1-isolate').checked = !!(nets[0] || {}).isolate;
+  for (var n = 2; n <= 4; n++) {
+    var x = nets[n - 1] || {};
+    $('net' + n + '-ssid').value = x.ssid || '';
+    $('net' + n + '-security').value = x.security === 'wpa2' ? 'wpa2' : 'open';
+    $('net' + n + '-routed').checked = !!x.address;
+    $('net' + n + '-address').value = x.address || '10.0.' + n + '.1/24';
+    $('net' + n + '-internet').checked = x.internet !== 0;
+    var reach = (x.reach || '').split(',');
+    REACH.forEach(function (rr) { var c = $('net' + n + '-reach-' + rr[0]); if (c) c.checked = reach.indexOf(rr[0]) >= 0; });
+    $('net' + n + '-isolate').checked = !!x.isolate;
+  }
+  netUpdate();
+}
+$('networks-form').addEventListener('change', netUpdate);
+$('networks-form').addEventListener('submit', async function (e) {
+  e.preventDefault();
+  var out = $('networks-msg'), count = +$('net-count').value, body = new URLSearchParams();
+  body.set('COUNT', String(count));
+  body.set('ISOLATE1', $('net1-isolate').checked ? '1' : '0');
+  for (var n = 2; n <= count; n++) {
+    var x = (state.networks || [])[n - 1] || {}, ssid = $('net' + n + '-ssid').value, sec = $('net' + n + '-security').value, pw = $('net' + n + '-password').value;
+    var routed = $('net' + n + '-routed').checked && state.mode === 'router', addr = $('net' + n + '-address').value.trim();
+    if (!ssidOK(ssid)) return msg(out, 'Network ' + n + ': name must be 1–32 bytes.', 'bad');
+    if (sec === 'wpa2' && (pw ? !asciiKey(pw) : x.security !== 'wpa2')) return msg(out, 'Network ' + n + ': password of 8–63 ASCII characters.', 'bad');
+    if (routed && !/^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/.test(addr)) return msg(out, 'Network ' + n + ': address/prefix, for example 10.0.' + n + '.1/24.', 'bad');
+    body.set('SSID' + n, ssid); body.set('SECURITY' + n, sec); body.set('PASSWORD' + n, sec === 'wpa2' ? pw : '');
+    body.set('ADDRESS' + n, routed ? addr : '');
+    body.set('INTERNET' + n, $('net' + n + '-internet').checked ? '1' : '0');
+    body.set('REACH' + n, REACH.map(function (rr) { var c = $('net' + n + '-reach-' + rr[0]); return c && c.checked ? rr[0] : ''; }).filter(Boolean).join(','));
+    body.set('ISOLATE' + n, $('net' + n + '-isolate').checked ? '1' : '0');
+  }
+  if (!window.confirm('Save the Wi-Fi networks and restart the device?')) return;
+  try {
+    var text = await post('/networks_apply.html', body, 5000);
+    if (text !== 'OK') throw new Error(text.replace(/^ERROR:\s*/, ''));
+  } catch (err) {
+    if (err.name !== 'TimeoutError' && err.name !== 'TypeError') return msg(out, err.message, 'bad');
+  }
+  msg(out, 'Saved. Restarting… reload this page in about one minute.', 'good');
 });
 
 (function () {

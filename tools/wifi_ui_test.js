@@ -30,12 +30,14 @@ function fixture(state, opts = {}) {
   const els = {};
   ids.forEach(id => els[id] = element(id));
   els['wifi-state'].textContent = JSON.stringify(state);
-  const radios = {ap: element('mode-ap'), repeater: element('mode-repeater')};
-  radios.ap.value = 'ap'; radios.repeater.value = 'repeater';
+  const radios = {ap: element('mode-ap'), repeater: element('mode-repeater'), router: element('mode-router')};
+  radios.ap.value = 'ap'; radios.repeater.value = 'repeater'; radios.router.value = 'router';
   els['wifi-form'].querySelector = sel => {
-    if (sel === 'input[name=MODE]:checked') return radios.ap.checked ? radios.ap : radios.repeater;
+    if (sel === 'input[name=MODE]:checked') return ['ap', 'repeater', 'router'].map(k => radios[k]).find(r => r.checked) || radios.ap;
     const m = /value=(\w+)/.exec(sel); return radios[m[1]];
   };
+  const reg = c => { if (c.id) els[c.id] = c; (c.children || []).forEach(reg); return c; };
+  els['net-list'].appendChild = reg;
   els['wifi-form'].querySelectorAll = () => [els.apply];
   els['scan-table'].tBodies = [element('tbody')];
   els['startup-lines'].appendChild = c => { if (c.id) els[c.id] = c; return c; };
@@ -44,7 +46,8 @@ function fixture(state, opts = {}) {
   const context = {TextEncoder, TextDecoder, URLSearchParams, Uint8Array, AbortSignal, console, Promise, Object, Math, Date, JSON,
     setTimeout(fn) { fn(); }, setInterval() {},
     window: {confirm() { return opts.confirm !== false; }},
-    document: {hidden: false, getElementById(id) { return els[id]; }, createElement(tag) { return element(tag); }, createTextNode(t) { return {textContent: t}; }},
+    location: {hash: opts.hash || ''}, history: {replaceState() {}},
+    document: {hidden: false, getElementById(id) { return els[id]; }, createElement(tag) { return element(tag); }, createTextNode(t) { return {textContent: t}; }, querySelectorAll() { return []; }},
     async fetch(url, options = {}) {
       calls.push({url, options});
       if (url.startsWith('/wifi_scan.html')) return {async json() { return {error: '', raw: survey}; }};
@@ -160,6 +163,52 @@ const submit = f => f.els['wifi-form'].listeners.submit({preventDefault() {}});
   f = fixture(withWg({enabled: 1, state: 'connected', status: 'Connected to 164.163.10.88:51820', handshake_age: 12, rx_bytes: 2048, tx_bytes: 512}));
   assert.strictEqual(f.els['st-wg'].className, 'ok'); assert(f.els['st-wg'].textContent.includes('handshake 12 s ago')); assert(f.els['st-wg'].textContent.includes('2.0 KB'));
 
+  /* Tabs */
+  f = fixture(base);
+  assert(!f.els['tab-status'].hidden && f.els['tab-wireless'].hidden && f.els['tab-system'].hidden);
+  f = fixture(base, {hash: '#vpn'}); assert(!f.els['tab-vpn'].hidden && f.els['tab-status'].hidden);
+  f = fixture(base, {hash: '#admin'}); assert(!f.els['tab-system'].hidden && !f.els['tab-system2'].hidden);
+
+  /* Router mode */
+  f = fixture(base); f.radios.ap.checked = false; f.radios.router.checked = true; f.els['wifi-form'].listeners.change();
+  assert(!f.els['router-fields'].hidden && !f.els['uplink-fields'].hidden && f.els.channel.disabled);
+  f.els.uplink.value = 'Home'; f.els['uplink-password'].value = 'uplink-pass-1'; f.els['lan-address'].value = '10.0.9.1';
+  await submit(f); assert.strictEqual(f.posts().length, 0); assert(f.els['wifi-msg'].textContent.includes('IPv4/prefix'));
+  f.els['lan-address'].value = '10.0.9.1/24'; f.els['uplink-bssid'].value = 'bad'; await submit(f); assert.strictEqual(f.posts().length, 0);
+  f.els['uplink-bssid'].value = '28:ee:52:37:d2:71'; f.els['lan-dhcp'].checked = false; await submit(f);
+  p = f.posts()[0].options.body;
+  assert.strictEqual(p.get('MODE'), 'router'); assert.strictEqual(p.get('LAN_ADDRESS'), '10.0.9.1/24'); assert.strictEqual(p.get('LAN_DHCP'), '0'); assert.strictEqual(p.get('UPLINK_BSSID'), '28:ee:52:37:d2:71');
+  assert(f.els['wifi-msg'].textContent.includes('Restarting')); assert.strictEqual(f.posts().length, 1, 'no state polling during restart');
+  f = fixture(Object.assign({}, base, {mode: 'router', uplink: 'Home', lan: {address: '10.0.1.1/24', dhcp: 1}}));
+  assert(f.radios.router.checked && f.els['st-mode'].textContent.includes('router') && f.els['lan-address'].value === '10.0.1.1/24');
+
+  /* Networks */
+  const nets = [{id: 1, enabled: 1, ssid: 'Extender-A', security: 'open', isolate: 0},
+                {id: 2, enabled: 1, ssid: 'guest', security: 'open', isolate: 1, address: '10.0.2.1/24', reach: '', internet: 1},
+                {id: 3, enabled: 0, ssid: '', security: 'open', isolate: 0, address: '', reach: '', internet: 1},
+                {id: 4, enabled: 0, ssid: '', security: 'open', isolate: 0, address: '', reach: '', internet: 1}];
+  f = fixture(Object.assign({}, base, {mode: 'router', lan: {address: '10.0.1.1/24', dhcp: 1}, networks: nets}));
+  assert.strictEqual(f.els['net-count'].value, '2'); assert(!f.els['net2-box'].hidden && f.els['net3-box'].hidden);
+  assert.strictEqual(f.els['net2-ssid'].value, 'guest'); assert(f.els['net2-routed'].checked && f.els['net2-isolate'].checked);
+  assert(!f.els['net2-reach-net2'], 'a network does not list itself'); assert(f.els['net2-reach-lan'] && !f.els['net2-reach-lan'].checked);
+  assert(f.els['st-nets'].textContent.includes('guest (10.0.2.1/24)'));
+  const ns = f.els['networks-form'].listeners.submit;
+  f.els['net-count'].value = '3'; f.els['networks-form'].listeners.change(); assert(!f.els['net3-box'].hidden);
+  f.els['net3-ssid'].value = 'iot'; f.els['net3-security'].value = 'wpa2';
+  await ns({preventDefault() {}}); assert.strictEqual(f.posts().length, 0); assert(f.els['networks-msg'].textContent.includes('Network 3'));
+  f.els['net3-password'].value = 'iot-pass-123'; f.els['net3-routed'].checked = true; f.els['net3-address'].value = '10.0.3.1/24';
+  f.els['net3-reach-lan'].checked = true; f.els['net3-reach-net2'].checked = true; f.els['net3-internet'].checked = false;
+  await ns({preventDefault() {}});
+  p = f.posts()[0]; assert.strictEqual(p.url, '/networks_apply.html');
+  const b = p.options.body;
+  assert.strictEqual(b.get('COUNT'), '3'); assert.strictEqual(b.get('SSID2'), 'guest'); assert.strictEqual(b.get('ADDRESS2'), '10.0.2.1/24'); assert.strictEqual(b.get('ISOLATE2'), '1');
+  assert.strictEqual(b.get('SECURITY3'), 'wpa2'); assert.strictEqual(b.get('PASSWORD3'), 'iot-pass-123'); assert.strictEqual(b.get('ADDRESS3'), '10.0.3.1/24');
+  assert.strictEqual(b.get('REACH3'), 'lan,net2'); assert.strictEqual(b.get('INTERNET3'), '0'); assert(!b.has('SSID4'));
+  /* bridge mode: no routed networks */
+  f = fixture(Object.assign({}, base, {networks: nets}));
+  assert(f.els['net2-routed'].disabled && f.els['net2-address'].disabled);
+  await f.els['networks-form'].listeners.submit({preventDefault() {}}); assert.strictEqual(f.posts()[0].options.body.get('ADDRESS2'), '');
+
   /* Startup script */
   f = fixture(Object.assign({}, base, {startup: [{command: 'net route add a b c', result: 'ok'}, {command: 'bogus', result: 'unknown command'}].concat(Array(6).fill({command: '', result: ''}))}));
   assert.strictEqual(f.els['startup-1'].value, 'net route add a b c'); assert.strictEqual(f.els['startup-result-1'].textContent, 'Last boot: ok');
@@ -175,5 +224,5 @@ const submit = f => f.els['wifi-form'].listeners.submit({preventDefault() {}});
   f = fixture(base); await f.els.factory.listeners.click(); assert.strictEqual(f.posts()[0].options.body.get('ACTION'), 'factory');
   f = fixture(base); await f.els.reboot.listeners.click(); assert.strictEqual(f.posts()[0].options.body.get('ACTION'), 'reboot');
 
-  console.log('PASS: status rendering, scan parsing and selection, Wi-Fi, admin, WireGuard and startup script validation, POST fields, system actions');
+  console.log('PASS: status rendering, scan parsing and selection, tabs, Wi-Fi (AP/repeater/router), networks, admin, WireGuard and startup script validation, POST fields, system actions');
 })().catch(e => { console.error(e); process.exitCode = 1; });

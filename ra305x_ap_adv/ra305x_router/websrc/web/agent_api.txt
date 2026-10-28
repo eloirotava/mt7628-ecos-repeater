@@ -12,6 +12,8 @@ GET /wifi_state.html returns JSON:
 - uplink (repeater uplink SSID), security (uplink driver authentication name), uplink_status (repeater only: driver connection text, for example "Connected" or "Disconnected").
 - admin_user, admin_password_set (0 or 1), telnet (1 when Telnet logins are accepted).
 - chip, version, build (UNIX time), uptime (seconds).
+- lan (router mode only): address (IPv4/prefix), dhcp (0 or 1).
+- networks: four objects (id 1-4) with enabled, ssid, security (open or wpa2), isolate (0 or 1), and for ids 2-4 address (empty when bridged), reach and internet.
 - wireguard: enabled, address (tunnel address/prefix), peer_public_key, endpoint, port, keepalive, preshared_key_set, public_key (this device, base64; new after every factory reset), state (off, starting, clock, handshake, connected or error), status, handshake_age (seconds, -1 before the first), rx_bytes and tx_bytes.
 
 Passwords are never returned.
@@ -23,7 +25,9 @@ GET /wifi_scan.html runs a site survey (about 3 seconds) and returns JSON {"erro
 ## Apply Wi-Fi settings
 
 POST /wifi_apply.html with:
-- MODE: ap (Ethernet uplink) or repeater (2.4 GHz Wi-Fi uplink). Both modes bridge clients to the upstream network, take the management address by upstream DHCP and run no DHCP server.
+- MODE: ap, repeater or router. ap and repeater bridge clients to the upstream network (ap: Ethernet uplink; repeater: Wi-Fi uplink), use upstream DHCP for the management address and run no DHCP server. router (WISP): Wi-Fi uplink as WAN with NAT; the device's own network uses LAN_ADDRESS and, with LAN_DHCP=1, hands out .100-.199. Changing to or from router saves and restarts the device instead of applying live.
+- LAN_ADDRESS: router only, IPv4/prefix 8-30 (default 10.0.1.1/24). LAN_DHCP: router only, 1 (default) or 0.
+- UPLINK_BSSID: optional for repeater and router, aa:bb:cc:dd:ee:ff, pins the uplink to one access point; empty lets the driver choose by name.
 - SSID: device network name, 1-32 UTF-8 bytes, no control characters.
 - DEVICE_SECURITY: open or wpa2.
 - PASSWORD: device WPA2-Personal password, 8-63 printable ASCII characters. With DEVICE_SECURITY=wpa2, an empty PASSWORD keeps the current password (only if the network already uses WPA2). Ignored for open.
@@ -35,6 +39,10 @@ POST /wifi_apply.html with:
 Settings are saved to flash and applied without a restart. Invalid fields are rejected before anything changes. OK means accepted, not connected: poll /wifi_state.html until busy is 0 and revision has increased, then require error=0 and saved=1 and verify mode, ssid, channel, uplink and, in repeater mode, uplink_status. A wrong uplink password keeps the device network running and shows a disconnected uplink_status. Also test traffic from a Wi-Fi client.
 
 Access point mode needs Ethernet to the router. Repeater mode uses wireless backhaul: disconnect an Ethernet uplink to the same network before applying to avoid a bridge loop. Reconnect to the configured device SSID if Wi-Fi drops; the DHCP address may change.
+
+## Wi-Fi networks
+
+POST /networks_apply.html. COUNT: number of active SSIDs, 1-4 (network 1 is the device network from wifi_apply). ISOLATE1: 1 isolates clients of network 1 from each other. For each n from 2 to COUNT: SSIDn (1-32 bytes); SECURITYn open or wpa2; PASSWORDn (8-63 ASCII; empty keeps the stored key when the network already used WPA2); ADDRESSn (router mode only: IPv4/prefix 8-30 makes it a routed network with its own DHCP pool .100-.199 and NAT; empty bridges it with network 1); INTERNETn 1 (default) or 0; REACHn comma list of device, lan, net2, net3, net4, wg (what the network may open connections to; empty: only the Internet); ISOLATEn 1 or 0. Ranges overlapping the LAN, another routed network or the WireGuard network are refused. Others can always open connections into a routed network and get replies; use REACH on the other side to allow the reverse. Saves and restarts the device. All networks share the radio and channel; with a Wi-Fi uplink the channel follows the uplink.
 
 ## Administration
 
