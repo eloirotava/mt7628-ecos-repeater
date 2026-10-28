@@ -118,10 +118,10 @@ const submit = f => f.els['wifi-form'].listeners.submit({preventDefault() {}});
   assert.strictEqual(p.get('UPLINK_PASSWORD'), 'uplink-pass-1'); assert.strictEqual(p.get('CHANNEL'), '6');
 
   /* Same uplink: empty password keeps the stored one */
-  f = fixture(Object.assign({}, base, {mode: 'repeater', uplink: 'Home', uplink_status: 'Disconnected'}));
+  f = fixture(Object.assign({}, base, {mode: 'repeater', uplink: 'Home', uplink_status: 'disconnected'}));
   assert(f.els['st-uplink'].className === 'bad' && f.els['st-uplink'].textContent.includes('not connected'));
   await submit(f); assert.strictEqual(f.posts().length, 1); assert.strictEqual(f.posts()[0].options.body.get('UPLINK_PASSWORD'), '');
-  f = fixture(Object.assign({}, base, {mode: 'repeater', uplink: 'Home', uplink_status: 'Connected'}));
+  f = fixture(Object.assign({}, base, {mode: 'repeater', uplink: 'Home', uplink_status: 'connected'}));
   assert.strictEqual(f.els['st-uplink'].className, 'ok');
 
   /* Administration */

@@ -25,12 +25,12 @@ static int CFG_save_user(void) { return save_fail ? -1 : 0; }
 const char sys_cust_ver[]="test-1";
 const unsigned int sys_build_time=1700000000;
 static long long cyg_current_time(void) { return 12345; }
-char *connectStat="Connected";
-int CmdIwpriv(int argc,char *argv[]) { return 0; }
 int CFG_telnet_allowed(void) { return 0; }
 int HTTPD_reconf;
 /* IMPLEMENTATION */
 static int wifi_ui_restart(void) { return 0; }
+static int uplink_up=1;
+static int wifi_ui_uplink_connected(void) { return uplink_up; }
 static http_req post={METHOD_POST};
 static void setup(const char *mode) {
  int i; const char *n[]={"MODE","SSID","PASSWORD","CHANNEL","UPLINK_SSID","UPLINK_PASSWORD","UPLINK_SECURITY",NULL};
@@ -71,7 +71,7 @@ int main(void) {
  setup("repeater");values[5]="";strcpy(cfg[CFG_WLN_ApCliSsid],"Test uplink");strcpy(cfg[CFG_WLN_ApCliWPAPSK],"uplink-stored-1");CGI_wifi_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[CFG_WLN_ApCliWPAPSK],"uplink-stored-1"));
  setup("repeater");values[5]="";strcpy(cfg[CFG_WLN_ApCliSsid],"Other");strcpy(cfg[CFG_WLN_ApCliWPAPSK],"uplink-stored-1");rejected();
  /* State reports uplink status in repeater mode and never passwords */
- setup("repeater");strcpy(cfg[CFG_WLN_ApCliEnable],"1");strcpy(cfg[CFG_SYS_ADMPASS],"secret-admin");CGI_wifi_state(&post);assert(strstr(output,"\"uplink_status\":\"Connected\""));assert(strstr(output,"\"admin_password_set\":1"));assert(!strstr(output,"secret-admin"));assert(strstr(output,"\"chip\":\"MT7628KN\""));
+ setup("repeater");strcpy(cfg[CFG_WLN_ApCliEnable],"1");strcpy(cfg[CFG_SYS_ADMPASS],"secret-admin");CGI_wifi_state(&post);assert(strstr(output,"\"uplink_status\":\"connected\""));assert(strstr(output,"\"admin_password_set\":1"));assert(!strstr(output,"secret-admin"));assert(strstr(output,"\"chip\":\"MT7628KN\""));
  /* Administration */
 #define ADMIN(u,p,c,cur) do{setup("ap");names[0]="USER";values[0]=(u);names[1]="PASSWORD";values[1]=(p);names[2]="CONFIRM";values[2]=(c);names[3]="CURRENT";values[3]=(cur);for(i=4;i<12;i++)names[i]=NULL;}while(0)
  ADMIN("admin","new-pass-1","new-pass-1","");strcpy(cfg[CFG_SYS_ADMPASS],"");CGI_admin_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[CFG_SYS_ADMPASS],"new-pass-1"));assert(HTTPD_reconf==1);
@@ -84,6 +84,7 @@ int main(void) {
  ADMIN("admin","","","old-pass-1");strcpy(cfg[CFG_SYS_ADMPASS],"old-pass-1");CGI_admin_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[CFG_SYS_ADMPASS],""));
  ADMIN("admin","new-pass-1","new-pass-1","");strcpy(cfg[CFG_SYS_ADMPASS],"");save_fail=1;CGI_admin_apply(&post);assert(strstr(output,"saving"));
  ADMIN("admin","new-pass-1","new-pass-1","");CGI_admin_apply(&get);assert(strstr(output,"POST required"));assert(sets==0);
+ setup("repeater");strcpy(cfg[CFG_WLN_ApCliEnable],"1");uplink_up=0;CGI_wifi_state(&post);assert(strstr(output,"\"uplink_status\":\"disconnected\""));uplink_up=1;
  puts("PASS: admin credentials validation, current-password check and save");
  puts("PASS: server validation, AP/repeater mapping, open/mixed security, rollback and JSON escaping");
  return 0;

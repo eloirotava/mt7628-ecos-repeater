@@ -229,6 +229,7 @@ static cyg_sem_t wifi_ui_wake;
 
 static int wifi_ui_restart(void);
 extern int CFG_telnet_allowed(void);
+static int wifi_ui_uplink_connected(void);
 
 static void wifi_ui_worker(cyg_addrword_t arg)
 {
@@ -302,12 +303,8 @@ void CGI_wifi_state(http_req *req)
     WEB_printf(req, ",\"build\":%u,\"uptime\":%u", sys_build_time, (unsigned int)(cyg_current_time()/100));
     CFG_get_str(CFG_WLN_ApCliEnable, val);
     if (atoi(val)) {
-        /* Driver text such as "Connected" or "Disconnected" for the uplink. */
-        extern char *connectStat;
-        extern int CmdIwpriv(int argc, char *argv[]);
-        char *show[] = { "apcli0", "show", "connStatus" };
-        CmdIwpriv(3, show);
-        WEB_printf(req, ",\"uplink_status\":"); wifi_ui_json(req, connectStat ? connectStat : "");
+        int up = wifi_ui_uplink_connected();
+        WEB_printf(req, ",\"uplink_status\":\"%s\"", up > 0 ? "connected" : up == 0 ? "disconnected" : "unknown");
     }
     WEB_printf(req, "}");
 }
@@ -7060,4 +7057,16 @@ void CGI_system_apply(http_req *req)
         CGI_reset_default();
     } else
         WEB_printf(req,"ERROR: ACTION must be reboot or factory");
+}
+
+static int wifi_ui_uplink_connected(void)
+{
+    extern int rt28xx_apcli_connected(struct eth_drv_sc *net_dev);
+    cyg_netdevtab_entry_t *t;
+
+    for (t = &__NETDEVTAB__[0]; t != &__NETDEVTAB_END__; t++) {
+        struct eth_drv_sc *sc = (struct eth_drv_sc *)t->device_instance;
+        if (!strcmp(sc->dev_name, "ra0")) return rt28xx_apcli_connected(sc);
+    }
+    return -1;
 }

@@ -282,3 +282,20 @@ INT rt28xx_ap_ioctl(
 	return retVal;
 }
 
+/* Web UI: 1 when the repeater uplink (apcli0) is associated, 0 if not, -1 if unknown. */
+int rt28xx_apcli_connected(PNET_DEV net_dev)
+{
+#ifdef APCLI_SUPPORT
+	RTMP_ADAPTER *pAd;
+
+	if (net_dev == NULL)
+		return -1;
+	pAd = RTMP_OS_NETDEV_GET_PRIV(net_dev);
+	if (pAd == NULL)
+		return -1;
+	return (pAd->ApCfg.ApCliTab[0].CtrlCurrState == APCLI_CTRL_CONNECTED)
+		&& (pAd->ApCfg.ApCliTab[0].SsidLen != 0);
+#else
+	return -1;
+#endif
+}
