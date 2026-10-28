@@ -198,8 +198,20 @@ static int wss_connect(void)
 	if (dns_resolve(wss_host, ip)) { set_status(WG_HANDSHAKE, "WSS: endpoint name not resolved"); return -1; }
 	addr4(&a, ip, 443);
 	a.sin_len = sizeof a;
-	fd = tcp_open(&a, 15);
-	if (fd < 0) { set_status(WG_HANDSHAKE, "WSS: TCP connection to port 443 failed"); return -1; }
+	fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (fd < 0) { set_status(WG_HANDSHAKE, "WSS: could not open a TCP socket"); return -1; }
+	{
+		struct timeval tv = { 15, 0 };
+		setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
+		setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+		setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof one);
+	}
+	if (connect(fd, (struct sockaddr *)&a, sizeof a) < 0) {
+		snprintf(m, sizeof m, "WSS: TCP connection to %s:443 failed (errno %d)", inet_ntoa(a.sin_addr), errno);
+		set_status(WG_HANDSHAKE, m);
+		close(fd);
+		return -1;
+	}
 	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
 	err = tls_handshake(&wss_conn, fd, wss_name, 0, 0, wss_key, x_now() + 30);
 	if (err) {
