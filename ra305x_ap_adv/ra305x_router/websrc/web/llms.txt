@@ -41,10 +41,12 @@ Telnet (TCP 23, same admin credentials) becomes available only after steps 2 and
 ## Optional: router mode and extra Wi-Fi networks
 
 Router mode takes the Internet from an existing 2.4 GHz network (WAN over Wi-Fi) and runs the device's own network behind NAT; the Ethernet port joins it.
-1. POST /wifi_apply.html MODE=router&SSID=..&DEVICE_SECURITY=..&PASSWORD=..&CHANNEL=<uplink channel>&UPLINK_SSID=..&UPLINK_SECURITY=..&UPLINK_PASSWORD=..&LAN_ADDRESS=10.0.1.1/24&LAN_DHCP=1 (optional UPLINK_BSSID=aa:bb:cc:dd:ee:ff when several access points share the uplink name). The device restarts; afterwards it is at the LAN_ADDRESS host (and at 192.168.11.1 on the Ethernet port, and over WireGuard if configured). The radio follows the uplink's channel.
-2. Extra networks: POST /networks_apply.html COUNT=<1-4> and, for each network n = 2..COUNT, SSIDn, SECURITYn (open|wpa2), PASSWORDn, ADDRESSn (e.g. 10.0.2.1/24 to route it with its own DHCP; empty to bridge it with network 1), INTERNETn (1|0), REACHn (comma list of device, lan, net2, net3, net4, wg; empty = Internet only), ISOLATEn (1 = clients cannot see each other), VIAn (wan, or wg to send that network's Internet traffic through the WireGuard tunnel; its DHCP then offers DNS 1.1.1.1). The device restarts.
+1. POST /wifi_apply.html MODE=router&SSID=..&DEVICE_SECURITY=..&PASSWORD=..&CHANNEL=<uplink channel>&UPLINK_SSID=..&UPLINK_SECURITY=..&UPLINK_PASSWORD=..&LAN_ADDRESS=10.0.1.1/24&LAN_DHCP=<1|0> (optional UPLINK_BSSID=aa:bb:cc:dd:ee:ff when several access points share the uplink name). The device restarts; afterwards it is at the LAN_ADDRESS host (and at 192.168.11.1 on the Ethernet port, and over WireGuard if configured). The radio follows the uplink's channel.
+   LAN_DHCP: use 1 only when nothing else on the Ethernet side runs a DHCP server. If the Ethernet port is cabled to an existing network (for example the home LAN), use LAN_DHCP=0: otherwise the device becomes a second DHCP server on that network and hands out wrong gateways. Ask the owner if unsure.
+2. If any network will use VIAn=wg, set up WireGuard first (section below) and confirm it is connected.
+3. Extra networks: POST /networks_apply.html COUNT=<1-4> and, for each network n = 2..COUNT, SSIDn, SECURITYn (open|wpa2), PASSWORDn, ADDRESSn (e.g. 10.0.2.1/24 to route it with its own DHCP; empty to bridge it with network 1), INTERNETn (1|0), REACHn (comma list of device, lan, net2, net3, net4, wg; empty = Internet only), ISOLATEn (1 = clients cannot see each other), VIAn (wan, or wg to send that network's Internet traffic through the WireGuard tunnel; its DHCP then offers DNS 1.1.1.1). The device restarts.
    Typical guest network: ADDRESSn=10.0.2.1/24&INTERNETn=1&REACHn=&ISOLATEn=1. Typical IoT network that the home network can reach but not the other way round: ADDRESSn=10.0.3.1/24&REACHn= (connections from network 1 into it are allowed; replies follow).
-3. Verify with GET /wifi_state.html: mode "router", lan.address, networks[] (ssid, enabled, address, reach, internet, isolate), then join each network from a client and check its address and Internet access.
+4. Verify with GET /wifi_state.html: mode "router", lan.address, networks[] (ssid, enabled, address, reach, internet, isolate), then join each network from a client and check its address and Internet access.
 
 ## Optional: WireGuard
 
@@ -75,8 +77,8 @@ Requests that change settings use POST with application/x-www-form-urlencoded fi
 
 GET /wifi_state.html returns JSON:
 - busy (0 or 1), revision (apply counter), error (0 on success; -3 means saving failed), stage, saved (1 when the last apply was written and verified in flash).
-- mode (ap or repeater), ssid (device network), device_security (open or wpa2), channel.
-- uplink (repeater uplink SSID), security (uplink driver authentication name), uplink_status (repeater only: driver connection text, for example "Connected" or "Disconnected").
+- mode (ap, repeater or router), ssid (device network), device_security (open or wpa2), channel.
+- uplink (uplink SSID in repeater and router modes), security (uplink driver authentication name), uplink_status (repeater only: driver connection text, for example "Connected" or "Disconnected").
 - admin_user, admin_password_set (0 or 1), telnet (1 when Telnet logins are accepted).
 - chip, version, build (UNIX time), uptime (seconds).
 - firmware: busy, state and error of the last firmware check, test or installation.
@@ -94,14 +96,14 @@ GET /wifi_scan.html runs a site survey (about 3 seconds) and returns JSON {"erro
 
 POST /wifi_apply.html with:
 - MODE: ap, repeater or router. ap and repeater bridge clients to the upstream network (ap: Ethernet uplink; repeater: Wi-Fi uplink), use upstream DHCP for the management address and run no DHCP server. router (WISP): Wi-Fi uplink as WAN with NAT; the device's own network uses LAN_ADDRESS and, with LAN_DHCP=1, hands out .100-.199. Changing to or from router saves and restarts the device instead of applying live.
-- LAN_ADDRESS: router only, IPv4/prefix 8-30 (default 10.0.1.1/24). LAN_DHCP: router only, 1 (default) or 0.
+- LAN_ADDRESS: router only, IPv4/prefix 8-30 (default 10.0.1.1/24). LAN_DHCP: router only, 1 (default) or 0; use 0 when the Ethernet port is cabled to a network that already has a DHCP server.
 - UPLINK_BSSID: optional for repeater and router, aa:bb:cc:dd:ee:ff, pins the uplink to one access point; empty lets the driver choose by name.
 - SSID: device network name, 1-32 UTF-8 bytes, no control characters.
 - DEVICE_SECURITY: open or wpa2.
 - PASSWORD: device WPA2-Personal password, 8-63 printable ASCII characters. With DEVICE_SECURITY=wpa2, an empty PASSWORD keeps the current password (only if the network already uses WPA2). Ignored for open.
 - CHANNEL: 1-13. In repeater mode use the channel of the uplink network.
-- UPLINK_SSID: repeater only, 1-32 UTF-8 bytes.
-- UPLINK_SECURITY: repeater only: wpa2 (AES), mixed (WPA/WPA2 TKIP/AES) or open.
+- UPLINK_SSID: repeater and router, 1-32 UTF-8 bytes.
+- UPLINK_SECURITY: repeater and router: wpa2 (AES), mixed (WPA/WPA2 TKIP/AES) or open.
 - UPLINK_PASSWORD: 8-63 printable ASCII characters for secured uplinks. Empty keeps the stored password when UPLINK_SSID is unchanged.
 
 Settings are saved to flash and applied without a restart. Invalid fields are rejected before anything changes. OK means accepted, not connected: poll /wifi_state.html until busy is 0 and revision has increased, then require error=0 and saved=1 and verify mode, ssid, channel, uplink and, in repeater mode, uplink_status. A wrong uplink password keeps the device network running and shows a disconnected uplink_status. Also test traffic from a Wi-Fi client.
@@ -110,7 +112,7 @@ Access point mode needs Ethernet to the router. Repeater mode uses wireless back
 
 ### Wi-Fi networks
 
-POST /networks_apply.html. COUNT: number of active SSIDs, 1-4 (network 1 is the device network from wifi_apply). ISOLATE1: 1 isolates clients of network 1 from each other. For each n from 2 to COUNT: SSIDn (1-32 bytes); SECURITYn open or wpa2; PASSWORDn (8-63 ASCII; empty keeps the stored key when the network already used WPA2); ADDRESSn (router mode only: IPv4/prefix 8-30 makes it a routed network with its own DHCP pool .100-.199 and NAT; empty bridges it with network 1); INTERNETn 1 (default) or 0; REACHn comma list of device, lan, net2, net3, net4, wg (what the network may open connections to; empty: only the Internet); ISOLATEn 1 or 0; VIAn wan (default) or wg: Internet traffic leaves through the WireGuard tunnel, translated to this device's tunnel address (WireGuard must be enabled and the server must forward and masquerade; DNS offered is 1.1.1.1). Ranges overlapping the LAN, another routed network or the WireGuard network are refused. Others can always open connections into a routed network and get replies; use REACH on the other side to allow the reverse. Saves and restarts the device. All networks share the radio and channel; with a Wi-Fi uplink the channel follows the uplink.
+POST /networks_apply.html. COUNT: number of active SSIDs, 1-4 (network 1 is the device network from wifi_apply). ISOLATE1: 1 isolates clients of network 1 from each other. For each n from 2 to COUNT: SSIDn (1-32 bytes); SECURITYn open or wpa2; PASSWORDn (8-63 ASCII; empty keeps the stored key when the network already used WPA2); ADDRESSn (router mode only: IPv4/prefix 8-30 makes it a routed network with its own DHCP pool .100-.199 and NAT; empty bridges it with network 1); INTERNETn 1 (default) or 0; REACHn comma list of device, lan, net2, net3, net4, wg (what the network may open connections to; empty: only the Internet); ISOLATEn 1 or 0; VIAn wan (default) or wg: Internet traffic leaves through the WireGuard tunnel, translated to this device's tunnel address; if the tunnel is down that traffic is dropped, never sent to the WAN (WireGuard must be enabled and configured before this request and the server must forward and masquerade; DNS offered is 1.1.1.1). Ranges overlapping the LAN, another routed network or the WireGuard network are refused. Others can always open connections into a routed network and get replies; use REACH on the other side to allow the reverse. Saves and restarts the device. All networks share the radio and channel; with a Wi-Fi uplink the channel follows the uplink.
 
 ### Administration
 
