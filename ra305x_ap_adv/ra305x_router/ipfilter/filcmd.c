@@ -1009,7 +1009,13 @@ void FW_init(void)
 	int val;
 	
 	if((CFG_get(CFG_FW_EN, &val) != -1) && (val == 0))
+	{
+		/* The SDK firewall is off (factory default), but routed Wi-Fi
+		 * networks still need their isolation rules. */
+		extern void net_extra_fw_rules(void (*set)(char *));
+		net_extra_fw_rules(FW_setrule);
 		return;
+	}
 
 #ifdef CONFIG_FW_MACF
 	FW_macf_init();
