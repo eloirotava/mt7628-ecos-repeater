@@ -156,15 +156,20 @@ static void lan_rescue_alias(void)
 
 #ifdef	CONFIG_DHCPC
 /*
- * Em AP Client (opmode 2) e bridge (opmode 3), a tomada e um no da rede de
- * cima, entao a LAN pede IP por DHCP mesmo com LAN_IP_MODE=1 salvo.
+ * Em bridge (opmode 3) e em opmode 2 sem uplink Wi-Fi (padrao de fabrica), a
+ * tomada e um no da rede de cima, entao a LAN pede IP por DHCP mesmo com
+ * LAN_IP_MODE=1 salvo. Em opmode 2 com apcli0 como WAN (roteador WISP) a LAN
+ * e a rede local da tomada e segue LAN_IP_MODE (normalmente estatico).
  */
 static int lan_ip_mode(int ipmode)
 {
-	int opmode = 0;
+	int opmode = 0, apcli = 0;
 
 	CFG_get(CFG_SYS_OPMODE, &opmode);
-	return (opmode == 2 || opmode == 3) ? 0 : ipmode;
+	CFG_get(CFG_WLN_ApCliEnable, &apcli);
+	if (opmode == 3 || (opmode == 2 && !apcli))
+		return 0;
+	return ipmode;
 }
 
 /*

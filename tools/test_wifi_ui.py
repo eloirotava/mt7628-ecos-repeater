@@ -84,13 +84,13 @@ lan_source = (repo / 'ra305x_ap_adv/ra305x_router/init/lan_start.c').read_bytes(
 start = lan_source.index('static int lan_ip_mode(int ipmode)')
 end = lan_source.index('\n}', start) + 2
 fragment = lan_source[start:end]
-harness = '#include <assert.h>\n#define CFG_SYS_OPMODE 1\nstatic int test_opmode;\nstatic int CFG_get(int id,int *out){*out=test_opmode;return 0;}\n' + fragment + '\nint main(void){test_opmode=2;assert(lan_ip_mode(1)==0);test_opmode=3;assert(lan_ip_mode(1)==0);assert(lan_ip_mode(0)==0);test_opmode=1;assert(lan_ip_mode(1)==1);return 0;}\n'
+harness = '#include <assert.h>\n#define CFG_SYS_OPMODE 1\n#define CFG_WLN_ApCliEnable 2\nstatic int test_opmode, test_apcli;\nstatic int CFG_get(int id,int *out){*out=id==CFG_SYS_OPMODE?test_opmode:test_apcli;return 0;}\n' + fragment + '\nint main(void){test_apcli=0;test_opmode=2;assert(lan_ip_mode(1)==0);test_opmode=3;assert(lan_ip_mode(1)==0);assert(lan_ip_mode(0)==0);test_opmode=1;assert(lan_ip_mode(1)==1);test_apcli=1;test_opmode=2;assert(lan_ip_mode(1)==1);assert(lan_ip_mode(0)==0);test_opmode=3;assert(lan_ip_mode(1)==0);return 0;}\n'
 with tempfile.TemporaryDirectory(prefix='tomada-dhcp-tests-') as temp:
     cfile=Path(temp)/'test.c';binary=Path(temp)/'test'
     cfile.write_text(harness)
     subprocess.run(['gcc',str(cfile),'-o',str(binary)],check=True)
     subprocess.run([str(binary)],check=True)
-print('PASS: bridged AP/repeater cold boot uses DHCP despite a legacy static-IP setting')
+print('PASS: bridged AP/repeater cold boot uses DHCP despite a legacy static-IP setting; WISP router keeps a static LAN')
 
 # WireGuard protocol core (wg/wg_proto.c): keyed BLAKE2s KAT and TAI64N.
 # Interop with a real wg0: wg_host_test <priv> <pub> <ip> <port> <tunnel-src> <ping-dst>
