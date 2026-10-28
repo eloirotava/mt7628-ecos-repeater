@@ -139,7 +139,7 @@ a{color:var(--accent)}
 <label for="ntun-public">This device's public key</label>
 <p id="ntun-public" class="key">–</p>
 <div class="row"><button type="button" id="ntun-copy" class="secondary">Copy public key</button></div>
-<small>Register this key on the server. It is generated on the device, survives factory resets, and its private half never leaves the device.</small>
+<small>Register this key on the server. It is generated on the device and replaced by a new one after a factory reset; its private half never leaves the device.</small>
 <label class="check"><input type="checkbox" id="ntun-enabled"> Enable remote access</label>
 <label for="ntun-host">Server</label>
 <input id="ntun-host" maxlength="63" autocomplete="off" spellcheck="false" placeholder="host name or IPv4 address">
@@ -161,7 +161,7 @@ a{color:var(--accent)}
 <label for="wg-public">This device's public key</label>
 <p id="wg-public" class="key">–</p>
 <div class="row"><button type="button" id="wg-copy" class="secondary">Copy public key</button></div>
-<small>Add this key as a peer on the server, with the tunnel address below as its allowed IP. The private key is generated on the device and never leaves it.</small>
+<small>Add this key as a peer on the server, with the tunnel address below as its allowed IP. The private key is generated on the device, replaced after a factory reset, and never leaves it.</small>
 <label class="check"><input type="checkbox" id="wg-enabled"> Enable WireGuard</label>
 <label for="wg-address">Tunnel address</label>
 <input id="wg-address" maxlength="18" autocomplete="off" spellcheck="false" placeholder="10.8.0.30/24">

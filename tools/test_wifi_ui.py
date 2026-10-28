@@ -50,6 +50,10 @@ assert 'lang="en"' in page and not re.search('[\u3400-\u9fff]', page)
 assert 'href="/llms.txt"' in page and (web / 'llms.txt').is_file() and (web / 'agent_api.txt').is_file()
 assert '<title>MT7628KN Wi-Fi Extender</title>' in page and 'Smart Plug' not in page
 assert 'agent_api' not in page, 'the page announces only /llms.txt; the rest is discovered from it'
+prof = (repo / 'ra305x_ap_adv/ra305x_router/cfg/cfg_prof.c').read_bytes().decode('latin1')
+reset = prof[prof.index('void CFG_reset_default()'):]
+reset = reset[:reset.index('\n}\n')]
+assert '_KEY' not in reset, 'factory reset must erase device keys (ntun, WireGuard), not carry them over'
 assert '/agent_api.txt' in (web / 'llms.txt').read_text()
 assert page.count('<%') == 1, 'only the state CGI tag may appear; webcomp parses <%'
 for endpoint in ('wifi_state', 'wifi_apply', 'wifi_scan', 'admin_apply', 'system_apply', 'ntun_apply', 'wg_apply'):

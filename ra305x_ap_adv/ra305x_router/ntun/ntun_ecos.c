@@ -2,8 +2,9 @@
  * boot thread and status for the web interface.
  *
  * Settings (SYS_NTUN_*) are read once at boot; the web interface saves and
- * restarts. The device key (SYS_NTUN_KEY) is generated here and survives a
- * factory reset; only its public half ever leaves the device. */
+ * restarts. The device key (SYS_NTUN_KEY) is generated here; a factory reset
+ * erases it and a new one is made at the next boot. Only its public half
+ * ever leaves the device. */
 #include <cyg/kernel/kapi.h>
 #include <network.h>
 #include <arpa/inet.h>

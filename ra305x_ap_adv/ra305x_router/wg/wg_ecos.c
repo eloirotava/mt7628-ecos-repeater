@@ -3,7 +3,8 @@
  *
  * One peer, initiator only. Settings (SYS_WG_*) are read at boot; the web
  * interface saves and restarts. The device key (SYS_WG_KEY) is generated on
- * the device and survives factory resets; only the public key is shown. */
+ * the device, erased by a factory reset (a new one is made at the next
+ * boot); only the public key is shown. */
 #include <cyg/kernel/kapi.h>
 #include <network.h>
 #include <arpa/inet.h>
