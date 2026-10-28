@@ -1,0 +1,43 @@
+name: wg54
+
+on:
+  push:
+    paths:
+      - 'wg54/**'
+      - '.github/workflows/wg54.yml'
+      - 'ra305x_ap_adv/ra305x_router/wg/wg_proto.*'
+      - 'ra305x_ap_adv/ra305x_router/crypto/**'
+  workflow_dispatch:
+
+jobs:
+  mipsel-linux24:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc-mipsel-linux-gnu binutils-mipsel-linux-gnu qemu-user wireguard-tools iperf3 >/dev/null
+      - name: build
+        run: |
+          make -C wg54
+          ls -l wg54/build/wg54 | tee -a "$GITHUB_STEP_SUMMARY"
+          mipsel-linux-gnu-readelf -h wg54/build/wg54.elf | grep -E "Flags|Entry"
+      - name: MIPS32r1 only (BCM5354), nothing from libgcc
+        run: |
+          mipsel-linux-gnu-objdump -d wg54/build/wg54.elf | awk -F'\t' 'NF >= 3 { print $3 }' | sort -u > /tmp/ops
+          tr '\n' ' ' < /tmp/ops; echo
+          for op in ext ins seb seh wsbh rotr rotrv di ei mfhc1 mthc1 synci rdhwr; do
+            if grep -qx "$op" /tmp/ops; then echo "FAIL: MIPS32r2 instruction $op"; exit 1; fi
+          done
+          if mipsel-linux-gnu-nm wg54/build/wg54.elf | grep -E " T __(u?div|u?mod|mul)[sd]i3"; then echo "FAIL: libgcc"; exit 1; fi
+      - name: selftest on a MIPS32r1 CPU (qemu 4KEcR1)
+        run: qemu-mipsel -cpu 4KEcR1 wg54/build/wg54 selftest
+      - name: end to end with kernel WireGuard through IPIP
+        run: sudo sh wg54/test/e2e.sh "qemu-mipsel -cpu 4KEcR1" wg54/build/wg54
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wg54-mipsel-linux24
+          path: |
+            wg54/build/wg54
+            wg54/build/wg54.elf
+            wg54/build/wg54.sh

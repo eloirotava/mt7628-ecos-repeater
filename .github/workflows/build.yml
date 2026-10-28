@@ -2,6 +2,9 @@ name: build
 
 on:
   push:
+    paths-ignore:
+      - 'wg54/**'
+      - '.github/workflows/wg54.yml'
   workflow_dispatch:
 
 jobs:
