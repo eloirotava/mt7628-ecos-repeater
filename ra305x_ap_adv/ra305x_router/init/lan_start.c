@@ -26,6 +26,7 @@
 //	LAN setup
 //
 //
+#include <net_extra.h>
 #include <stdio.h>
 #include <pkgconf/system.h>
 #include <pkgconf/net.h>
@@ -513,7 +514,8 @@ int Wireless_start()
         sprintf(ifName, "ra%d", i);
         result = netif_up(ifName);
 #ifdef CONFIG_BRIDGE
-	if (result) {
+	/* routed extra networks (net_extra.c) stay out of the LAN bridge */
+	if (result && !net_extra_routed(i + 1, 0, 0)) {
 		sprintf(temp_cfg, "%s, ra%d", bridge_cfg, i);
 		sprintf(bridge_cfg, "%s", temp_cfg);
 	}
@@ -579,6 +581,7 @@ int Wireless_start()
         }
 	}
 
+	net_extra_apply(); /* addresses and DHCP of routed extra networks */
 	return 0;
 }
 

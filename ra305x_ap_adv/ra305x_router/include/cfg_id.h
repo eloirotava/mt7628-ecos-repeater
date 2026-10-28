@@ -224,6 +224,10 @@
 #define CFG_SYS_BOOT6	CFG_SYS_(75,CFG_TYPE_STR)
 #define CFG_SYS_BOOT7	CFG_SYS_(76,CFG_TYPE_STR)
 #define CFG_SYS_BOOT8	CFG_SYS_(77,CFG_TYPE_STR)
+/* Extra Wi-Fi networks 2..4 (init/net_extra.c): address/prefix if routed */
+#define CFG_SYS_NET2_IP	CFG_SYS_(80,CFG_TYPE_STR)
+#define CFG_SYS_NET3_IP	CFG_SYS_(81,CFG_TYPE_STR)
+#define CFG_SYS_NET4_IP	CFG_SYS_(82,CFG_TYPE_STR)
 /* WireGuard client (wg/wg_ecos.c) */
 #define CFG_SYS_WG_EN	CFG_SYS_(50,CFG_TYPE_STR)
 #define CFG_SYS_WG_KEY	CFG_SYS_(51,CFG_TYPE_STR)

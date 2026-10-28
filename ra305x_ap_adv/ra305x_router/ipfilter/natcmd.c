@@ -700,7 +700,22 @@ static void napt_init(void)
 		sprintf(naptcmd, "map %s fromif %s 0/0 -> 0/32 icmpidmap icmp 45000:65535\n", 
 			primary_wan_ip_set[j].ifname, SYS_lan_if);
 		NAT_setrule(naptcmd);
-		
+
+		/* routed extra Wi-Fi networks (init/net_extra.c) leave through the same WAN */
+		{
+			extern int net_extra_ifnames(char names[][8], int max);
+			char names[3][8];
+			int k, count = net_extra_ifnames(names, 3);
+			for (k = 0; k < count; k++) {
+				sprintf(naptcmd, "map %s fromif %s 0/0 -> 0/32 portmap tcp/udp auto\n",
+					primary_wan_ip_set[j].ifname, names[k]);
+				NAT_setrule(naptcmd);
+				sprintf(naptcmd, "map %s fromif %s 0/0 -> 0/32 icmpidmap icmp 45000:65535\n",
+					primary_wan_ip_set[j].ifname, names[k]);
+				NAT_setrule(naptcmd);
+			}
+		}
+
 		/*  Mark rule set  */
 		primary_wan_ip_set[j].flags |= IPSET_FG_NATCONFIG;
 

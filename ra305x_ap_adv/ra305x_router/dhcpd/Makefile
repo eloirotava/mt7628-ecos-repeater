@@ -6,7 +6,7 @@ include ../.config
 CURR_DIR=$(shell pwd)
 EXTRA_CFLAGS = -I$(CURR_DIR)/include
 
-DHCPD = ./src/leases.o ./src/packet.o ./src/common_subr.o ./src/dhcpd.o
+DHCPD = ./src/leases.o ./src/packet.o ./src/common_subr.o ./src/dhcpd.o ./src/dhcps_net.o
 
 ALL_OBJS = $(DHCPD) ./src/dynamic_leases.o
 
