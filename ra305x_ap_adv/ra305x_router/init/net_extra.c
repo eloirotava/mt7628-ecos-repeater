@@ -6,6 +6,9 @@
 #include <cyg/kernel/kapi.h>
 #include <network.h>
 #include <arpa/inet.h>
+#include <sys/param.h>
+#include <sys/mbuf.h>
+#include <net/if.h>
 #include <string.h>
 #include <stdlib.h>
 #include <cfg_def.h>
