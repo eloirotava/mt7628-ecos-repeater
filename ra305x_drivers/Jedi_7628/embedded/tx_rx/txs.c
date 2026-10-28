@@ -311,6 +311,12 @@ INT32 ParseTxSPacket(RTMP_ADAPTER *pAd, UINT32 Pid, UINT8 Format, CHAR *Data)
 	TXS_CTL *TxSCtl = &pAd->TxSCtl;
 	TXS_TYPE *TxSType = NULL;
 
+	/* A TX status report can arrive before TxS is initialised: after a RAM
+	 * boot the chip still holds reports from the previous firmware. The list
+	 * head is then zeroed and walking it dereferences NULL (TLBL, badva 8). */
+	if (TxSCtl->TxSType[Pid % TOTAL_PID_HASH_NUMS].Next == NULL)
+		return -1;
+
 	RTMP_SPIN_LOCK_IRQSAVE(&TxSCtl->TxSTypeLock[Pid % TOTAL_PID_HASH_NUMS], &Flags);
 	DlListForEach(TxSType, &TxSCtl->TxSType[Pid % TOTAL_PID_HASH_NUMS], TXS_TYPE, List) 
 	{
