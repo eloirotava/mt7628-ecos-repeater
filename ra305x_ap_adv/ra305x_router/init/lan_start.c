@@ -325,12 +325,14 @@ int lan_set_ip(void)
     if ( lan_up == true )
 	{
     	lan_rescue_alias();
-	/* Bridge mode: the device is a host on the upstream network and needs
-	 * its gateway for its own traffic (SNTP, WireGuard, ntun). */
+	/* Opmode 2/3 with a DHCP LAN (factory default is 2 with no Wi-Fi uplink):
+	 * the device is a host on the upstream network and needs the lease's
+	 * gateway for its own traffic (SNTP, WireGuard, ntun). A static LAN
+	 * without a gateway (future routed mode) adds nothing. */
 	{
 		extern int opmode;
 		extern cyg_bool_t RT_add_default(const char *intf, unsigned int gw);
-		if (opmode == 3 && primary_lan_ip_set.gw_ip &&
+		if ((opmode == 2 || opmode == 3) && primary_lan_ip_set.gw_ip &&
 		    RT_add_default(LAN_NAME, primary_lan_ip_set.gw_ip))
 			diag_printf("LAN: default route via %s\n", inet_ntoa(*(struct in_addr *)&primary_lan_ip_set.gw_ip));
 	}
