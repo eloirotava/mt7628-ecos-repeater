@@ -27,8 +27,12 @@ if [ "$1" = fw ]; then
 	exit 0
 fi
 if [ "$1" = watch ]; then
+	for s in HUP INT TERM; do
+		trap "echo watch: $s at \$(cat /proc/uptime) >> /tmp/wg54.boot" $s
+	done
 	sh "$0"
-	while sleep 60; do
+	while :; do
+		sleep 60
 		[ -f /tmp/wg54.pid ] || exit 0
 		[ -d "/proc/$(cat /tmp/wg54.pid)" ] || sh "$0"
 	done

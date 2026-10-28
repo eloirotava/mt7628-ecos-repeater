@@ -11,6 +11,10 @@ if [ -f /tmp/wg54.boot ]; then
 fi
 touch /tmp/wg54.boot
 (
+# DD-WRT signals the rc_firewall process group once it is done; survive that.
+for s in HUP INT TERM; do
+	trap "echo boot: $s at \$(cat /proc/uptime) >> /tmp/wg54.boot" $s
+done
 cd /tmp
 while :; do
 	for u in $(nvram get wg54_url); do
@@ -18,7 +22,9 @@ while :; do
 			chmod 755 wg54.new && ./wg54.new selftest; then
 			mv wg54.new wg54
 			mv wg54.sh.new wg54.sh
-			exec sh /tmp/wg54.sh watch
+			echo "boot: $u at $(cat /proc/uptime)" >> /tmp/wg54.boot
+			sh /tmp/wg54.sh watch
+			exit 0
 		fi
 		rm -f wg54.new wg54.sh.new
 	done
