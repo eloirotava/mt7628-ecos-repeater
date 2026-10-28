@@ -228,6 +228,14 @@
 #define CFG_SYS_NET2_IP	CFG_SYS_(80,CFG_TYPE_STR)
 #define CFG_SYS_NET3_IP	CFG_SYS_(81,CFG_TYPE_STR)
 #define CFG_SYS_NET4_IP	CFG_SYS_(82,CFG_TYPE_STR)
+/* what a routed network may reach: comma list of device,lan,net2,net3,net4,wg */
+#define CFG_SYS_NET2_REACH	CFG_SYS_(83,CFG_TYPE_STR)
+#define CFG_SYS_NET3_REACH	CFG_SYS_(84,CFG_TYPE_STR)
+#define CFG_SYS_NET4_REACH	CFG_SYS_(85,CFG_TYPE_STR)
+/* routed network may use the Internet: 1 or 0 */
+#define CFG_SYS_NET2_INTERNET	CFG_SYS_(86,CFG_TYPE_STR)
+#define CFG_SYS_NET3_INTERNET	CFG_SYS_(87,CFG_TYPE_STR)
+#define CFG_SYS_NET4_INTERNET	CFG_SYS_(88,CFG_TYPE_STR)
 /* WireGuard client (wg/wg_ecos.c) */
 #define CFG_SYS_WG_EN	CFG_SYS_(50,CFG_TYPE_STR)
 #define CFG_SYS_WG_KEY	CFG_SYS_(51,CFG_TYPE_STR)

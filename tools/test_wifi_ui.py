@@ -56,7 +56,7 @@ reset = reset[:reset.index('\n}\n')]
 assert '_KEY' not in reset, 'factory reset must erase the WireGuard device key, not carry it over'
 assert '/agent_api.txt' in (web / 'llms.txt').read_text()
 assert page.count('<%') == 1, 'only the state CGI tag may appear; webcomp parses <%'
-for endpoint in ('wifi_state', 'wifi_apply', 'wifi_scan', 'admin_apply', 'system_apply', 'wg_apply', 'startup_apply'):
+for endpoint in ('wifi_state', 'wifi_apply', 'wifi_scan', 'admin_apply', 'system_apply', 'wg_apply', 'startup_apply', 'networks_apply'):
     assert (web / f'{endpoint}.html').is_file(), endpoint
 assert not (web / 'factorySetting.html').exists()
 assert 'WG_KEY' not in source, 'the web interface must never read the WireGuard device private key'
@@ -107,3 +107,10 @@ with tempfile.TemporaryDirectory(prefix='tomada-boot-tests-') as temp:
     subprocess.run(['gcc', '-std=gnu99', '-Wall', '-DCLI_BOOT_HOST_TEST', f'-I{router}/cli', '-o', str(binary), str(repo / 'tools/cli_boot_test.c')], check=True)
     subprocess.run([str(binary)], check=True, stdout=subprocess.PIPE)
     print('PASS: startup script command-tree walk, results and isolation from the config')
+
+# Routed networks and isolation rules (init/net_extra.c)
+with tempfile.TemporaryDirectory(prefix='tomada-net-tests-') as temp:
+    binary = Path(temp) / 'net_extra_test'
+    subprocess.run(['gcc', '-std=gnu99', '-DNET_EXTRA_HOST_TEST', f'-I{router}/init', f'-I{router}/include', '-o', str(binary), str(repo / 'tools/net_extra_test.c')], check=True)
+    subprocess.run([str(binary)], check=True, stdout=subprocess.PIPE)
+    print('PASS: routed networks, address parsing and isolation rules (reach list, Internet, device access)')

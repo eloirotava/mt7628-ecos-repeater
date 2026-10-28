@@ -2,6 +2,7 @@
  * SYS_NETn_IP holds an address/prefix (e.g. 10.0.2.1/24) is routed: it stays
  * out of the LAN bridge, gets that address, its own DHCP pool and NAT to the
  * WAN. An empty SYS_NETn_IP keeps it bridged with the LAN, as before. */
+#ifndef NET_EXTRA_HOST_TEST
 #include <cyg/kernel/kapi.h>
 #include <network.h>
 #include <arpa/inet.h>
@@ -11,6 +12,8 @@
 #include <cfg_id.h>
 #include <cfg_net.h>
 #include <cfg_dns.h>
+#include <sys_status.h>
+#endif
 #include "net_extra.h"
 
 extern int CFG_get_str(int id, char *val);
@@ -18,6 +21,8 @@ extern cyg_bool_t netif_alias_cfg(const char *intf, struct ip_set *setp);
 extern int DHCPS_net_start(const char *ifname, unsigned long ip, unsigned long mask, unsigned long dns);
 
 static const int ip_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_IP, CFG_SYS_NET3_IP, CFG_SYS_NET4_IP };
+static const int reach_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_REACH, CFG_SYS_NET3_REACH, CFG_SYS_NET4_REACH };
+static const int internet_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_INTERNET, CFG_SYS_NET3_INTERNET, CFG_SYS_NET4_INTERNET };
 
 /* "a.b.c.d/n" -> address and mask (network order); 0 if valid */
 int net_extra_parse(const char *s, unsigned long *ip, unsigned long *mask)
@@ -81,7 +86,98 @@ void net_extra_apply(void)
 		set.ip = ip;
 		set.netmask = mask;
 		if (!netif_alias_cfg(names[i], &set)) diag_printf("net: %s address failed\n", names[i]);
-		/* clients use the upstream DNS server (reachable through NAT) */
-		DHCPS_net_start(names[i], ip, mask, DNS_group_get(0));
+		/* dns 0: offer the upstream DNS current at each reply (reachable through NAT) */
+		DHCPS_net_start(names[i], ip, mask, 0);
+	}
+}
+
+/* comma list membership, e.g. has("lan,wg", "wg") */
+static int has(const char *list, const char *item)
+{
+	size_t n = strlen(item);
+	const char *p = list;
+	while ((p = strstr(p, item))) {
+		if ((p == list || p[-1] == ',') && (p[n] == 0 || p[n] == ',')) return 1;
+		p += n;
+	}
+	return 0;
+}
+
+static int prefix(unsigned long mask)
+{
+	unsigned long m = ntohl(mask);
+	int n = 0;
+	while (m & 0x80000000UL) { n++; m <<= 1; }
+	return n;
+}
+
+static void rule(void (*set)(char *), const char *fmt, const char *ifn, unsigned long ip, int len)
+{
+	char buf[160], a[16];
+	strcpy(a, inet_ntoa(*(struct in_addr *)&ip));
+	snprintf(buf, sizeof buf, fmt, ifn, a, len);
+	set(buf);
+}
+
+/* IPFilter rules for routed networks (called from FW_basic_rule):
+ * others (the LAN, the device) may open connections into a routed network
+ * and get replies through state; a routed network reaches only what its
+ * REACH list names, plus the Internet unless INTERNET is 0. */
+void net_extra_fw_rules(void (*set)(char *))
+{
+	char names[NET_EXTRA_MAX][8], reach[NET_EXTRA_MAX][64], val[64], buf[160];
+	unsigned long ip[NET_EXTRA_MAX], mask[NET_EXTRA_MAX], wg_ip = 0, wg_mask = 0;
+	int internet[NET_EXTRA_MAX], num[NET_EXTRA_MAX];
+	int i, j, count = net_extra_ifnames(names, NET_EXTRA_MAX);
+	const unsigned long rescue = inet_addr("192.168.11.1");
+
+	val[0] = 0;
+	CFG_get_str(CFG_SYS_WG_ADDR, val);
+	if (val[0]) net_extra_parse(val, &wg_ip, &wg_mask);
+	for (i = 0; i < count; i++) {
+		num[i] = names[i][2] - '0' + 1;
+		net_extra_routed(num[i], &ip[i], &mask[i]);
+		reach[i][0] = 0;
+		CFG_get_str(reach_ids[num[i] - 2], reach[i]);
+		val[0] = 0;
+		CFG_get_str(internet_ids[num[i] - 2], val);
+		internet[i] = strcmp(val, "0") != 0;
+	}
+	for (i = 0; i < count; i++) {
+		const char *x = names[i];
+		snprintf(buf, sizeof buf, "pass out quick on %s from any to any keep state\n", x);
+		set(buf);
+		if (!has(reach[i], "device")) {
+			rule(set, "block in quick on %s from any to %s/%d\n", x, ip[i], 32);
+			rule(set, "block in quick on %s from any to %s/%d\n", x, SYS_lan_ip, 32);
+			rule(set, "block in quick on %s from any to %s/%d\n", x, rescue, 32);
+			if (wg_ip) rule(set, "block in quick on %s from any to %s/%d\n", x, wg_ip, 32);
+			for (j = 0; j < count; j++)
+				if (j != i) rule(set, "block in quick on %s from any to %s/%d\n", x, ip[j], 32);
+		}
+		if (!has(reach[i], "lan"))
+			rule(set, "block in quick on %s from any to %s/%d\n", x, SYS_lan_ip & SYS_lan_mask, prefix(SYS_lan_mask));
+		for (j = 0; j < count; j++) {
+			char key[8];
+			snprintf(key, sizeof key, "net%d", num[j]);
+			if (j != i && !has(reach[i], key))
+				rule(set, "block in quick on %s from any to %s/%d\n", x, ip[j] & mask[j], prefix(mask[j]));
+		}
+		if (wg_ip && !has(reach[i], "wg"))
+			rule(set, "block in quick on %s from any to %s/%d\n", x, wg_ip & wg_mask, prefix(wg_mask));
+		if (!internet[i]) {
+			/* only the allowed local destinations, nothing beyond */
+			if (has(reach[i], "device")) rule(set, "pass in quick on %s from any to %s/%d\n", x, ip[i], 32);
+			if (has(reach[i], "lan")) rule(set, "pass in quick on %s from any to %s/%d\n", x, SYS_lan_ip & SYS_lan_mask, prefix(SYS_lan_mask));
+			if (wg_ip && has(reach[i], "wg")) rule(set, "pass in quick on %s from any to %s/%d\n", x, wg_ip & wg_mask, prefix(wg_mask));
+			for (j = 0; j < count; j++) {
+				char key[8];
+				snprintf(key, sizeof key, "net%d", num[j]);
+				if (j != i && has(reach[i], key))
+					rule(set, "pass in quick on %s from any to %s/%d\n", x, ip[j] & mask[j], prefix(mask[j]));
+			}
+			snprintf(buf, sizeof buf, "block in quick on %s all\n", x);
+			set(buf);
+		}
 	}
 }

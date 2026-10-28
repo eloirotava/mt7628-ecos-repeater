@@ -16,6 +16,7 @@
 #include <dhcpd.h>
 #include <common_subr.h>
 #include <packet.h>
+#include <cfg_dns.h>
 
 extern int LIB_etherpacket_send(struct ifnet *ifp, struct mbuf *m, unsigned char *dst_hwaddr, char *data, int len);
 extern struct ifnet *ifunit(const char *name);
@@ -116,7 +117,11 @@ static void reply(struct net *n, const struct dhcpd *req, int type, unsigned lon
 		if (type != DHCPACK || yiaddr) dhcpd_add_option(d->options, DHCP_LEASE_TIME, 4, &lease);
 		dhcpd_add_option(d->options, DHCP_SUBNET, 4, &n->mask);
 		dhcpd_add_option(d->options, DHCP_ROUTER, 4, &n->ip);
-		if (n->dns) dhcpd_add_option(d->options, DHCP_DNS_SERVER, 4, &n->dns);
+		/* upstream DNS as of now: at boot the WAN may not have a lease yet */
+		{
+			unsigned long dns = n->dns ? n->dns : DNS_group_get(0);
+			if (dns) dhcpd_add_option(d->options, DHCP_DNS_SERVER, 4, &dns);
+		}
 	}
 	if (type != DHCPNAK && req->ciaddr) { dst = req->ciaddr; dst_mac = (unsigned char *)req->chaddr; }
 	else { dst = INADDR_BROADCAST; dst_mac = MAC_BCAST_ADDR; }

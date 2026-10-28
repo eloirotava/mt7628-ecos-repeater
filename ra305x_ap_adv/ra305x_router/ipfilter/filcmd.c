@@ -743,7 +743,13 @@ void FW_basic_rule(void)
 		strcpy(wanipstr[i], NSTR(primary_wan_ip_set[i].ip));
 
 	strcpy(lanipstr, NSTR(SYS_lan_ip));
-	
+
+	/* isolation of routed extra Wi-Fi networks (init/net_extra.c) */
+	{
+		extern void net_extra_fw_rules(void (*set)(char *));
+		net_extra_fw_rules(FW_setrule);
+	}
+
 	// unallow ping gateway from LAN
 	if((CFG_get(CFG_FW_PING_DIS_LAN, &val) != -1) && (val ==1))
 	{
