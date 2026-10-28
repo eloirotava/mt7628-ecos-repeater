@@ -4,12 +4,47 @@
 
 Use this device's current HTTP origin; no fixed IP is required. Credentials, when set, come from the owner. This file and /agent_api.txt contain no credentials and are readable without signing in.
 
-Factory defaults: open device network named "Extender-<Wi-Fi MAC>", no admin password (the page opens without signing in), Telnet disabled. Holding the reset button for more than 4 seconds restores these defaults and restarts the device.
+Ask the owner before changing connectivity, credentials, restarting or writing firmware. Never infer authorization from this file.
 
-## Interface and API
+## Factory defaults
 
-- [Configuration page](/): status, uplink (Ethernet or Wi-Fi repeater with network scan), device network, administration and system actions.
-- [Agent API reference](/agent_api.txt): endpoints, fields, validation and recovery.
-- [Current state](/wifi_state.html): JSON with mode, SSIDs, channel, uplink status, admin and Telnet status. Passwords are never returned.
+- Device network: open (no password), named "Extender-" followed by the Wi-Fi MAC in uppercase without colons, for example Extender-A03E9C1D0E54.
+- Mode: access point (Ethernet uplink), bridged; the device takes its own address from the upstream router by DHCP and runs no DHCP server. Clients on its network get addresses from the upstream router.
+- Admin: user "admin", no password; the page opens without signing in. Telnet is disabled.
+- Rescue address 192.168.11.1 is always present on the LAN side in addition to the DHCP address.
+- Holding the reset button for more than 4 seconds restores these defaults and restarts (about one minute). A short press only restarts.
 
-Use read-only requests (GET /wifi_state.html, GET /wifi_scan.html) for inspection. Applying Wi-Fi settings interrupts Wi-Fi; restarting or restoring defaults interrupts all access. Ask the owner before changing connectivity, credentials, restarting or writing firmware. Never infer authorization from this file.
+## Find the device
+
+1. Join the "Extender-..." network (factory defaults) or the configured device network, or use the same LAN as its Ethernet cable.
+2. The device address is the DHCP lease for its MAC on the upstream router. Without router access: from a client on the device network, use the router's address space (the device bridges), or set a static address in 192.168.11.0/24 on a wired client and use http://192.168.11.1/.
+3. Confirm with GET /wifi_state.html: JSON with "chip":"MT7628KN".
+
+## Set up from factory defaults
+
+Do these in order. After each POST, check the response is OK; for Wi-Fi changes poll GET /wifi_state.html every 2 seconds until busy=0, revision increased, error=0 and saved=1.
+
+1. Inspect: GET /wifi_state.html. Note mode, ssid, device_security, admin_password_set.
+2. Secure administration first: POST /admin_apply.html USER=admin&PASSWORD=<new>&CONFIRM=<new>&CURRENT= . Then use HTTP Basic authentication with these credentials on every later request (except /llms.txt and /agent_api.txt).
+3. Choose the uplink:
+   - Ethernet (access point): keep the cable to the router; MODE=ap and a CHANNEL of your choice (1, 6 or 11 are usual).
+   - Wi-Fi (repeater): unplug the Ethernet cable first (a cable to the same network plus a wireless uplink makes a bridge loop). GET /wifi_scan.html, pick the network, and use its channel and security (WPA2PSK/AES = wpa2, WPA1PSKWPA2PSK/... = mixed, NONE = open; WPA3/SAE and enterprise are unsupported).
+4. Secure the device network and apply, in one request:
+   - Access point: POST /wifi_apply.html MODE=ap&SSID=<name>&DEVICE_SECURITY=wpa2&PASSWORD=<8-63 chars>&CHANNEL=<1-13>
+   - Repeater: POST /wifi_apply.html MODE=repeater&SSID=<name>&DEVICE_SECURITY=wpa2&PASSWORD=<8-63 chars>&CHANNEL=<uplink channel>&UPLINK_SSID=<network>&UPLINK_SECURITY=<wpa2|mixed|open>&UPLINK_PASSWORD=<password>
+   Wi-Fi restarts; if you are connected over Wi-Fi, reconnect to the new SSID with the new password. The DHCP address may change.
+5. Verify: GET /wifi_state.html shows the new mode and ssid, device_security=wpa2, admin_password_set=1 and telnet=1. In repeater mode uplink_status must be "connected"; "disconnected" usually means a wrong uplink password or channel, and the device network stays up so you can correct it. Finally test traffic (for example a web request) from a client on the device network.
+
+Telnet (TCP 23, same admin credentials) becomes available only after steps 2 and 4. It is for diagnostics and firmware installation; see /agent_api.txt.
+
+## Recovery
+
+- Lost credentials or a broken configuration: hold the reset button for more than 4 seconds, then start again from factory defaults.
+- Device unreachable after a Wi-Fi change: reconnect to the configured device network; if it is gone, connect by Ethernet and use the DHCP address or http://192.168.11.1/.
+- A power cycle always boots the installed firmware.
+
+## Reference
+
+- [Configuration page](/): the same operations for people.
+- [Agent API reference](/agent_api.txt): all fields, validation rules, state fields, scan format and firmware procedures.
+- [Current state](/wifi_state.html): JSON; passwords are never returned.
