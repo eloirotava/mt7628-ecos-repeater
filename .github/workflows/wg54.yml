@@ -41,3 +41,4 @@ jobs:
             wg54/build/wg54
             wg54/build/wg54.elf
             wg54/build/wg54.sh
+            wg54/build/boot.sh

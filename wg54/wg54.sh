@@ -8,15 +8,36 @@
 # The binary is expected at /tmp/wg54 (RAM); run again to restart.
 #   sh /tmp/wg54.sh            start / restart
 #   sh /tmp/wg54.sh stop
+#   sh /tmp/wg54.sh fw         re-add the iptables rules (from rc_firewall)
+#   sh /tmp/wg54.sh watch      start, then restart whenever it dies (not after stop)
 W=/tmp/wg54
 IF=wg0
+
+rule() { iptables -D "$@" 2>/dev/null; iptables -I "$@"; }
+unrule() { iptables -D "$@" 2>/dev/null; }
+rules() {
+	# the encapsulated copy of every outgoing packet must not come back in
+	rule INPUT -p 4 -s 127.0.0.1 -d 127.0.0.2 -j DROP
+	rule INPUT -i $IF -j ACCEPT
+	rule FORWARD -i $IF -j ACCEPT
+	rule FORWARD -o $IF -j ACCEPT
+}
+if [ "$1" = fw ]; then
+	[ -f /tmp/wg54.pid ] && rules
+	exit 0
+fi
+if [ "$1" = watch ]; then
+	sh "$0"
+	while sleep 60; do
+		[ -f /tmp/wg54.pid ] || exit 0
+		[ -d "/proc/$(cat /tmp/wg54.pid)" ] || sh "$0"
+	done
+fi
 
 if [ -f /tmp/wg54.pid ]; then
 	kill "$(cat /tmp/wg54.pid)" 2>/dev/null
 	rm -f /tmp/wg54.pid
 fi
-rule() { iptables -D "$@" 2>/dev/null; iptables -I "$@"; }
-unrule() { iptables -D "$@" 2>/dev/null; }
 if [ "$1" = stop ]; then
 	ip tunnel del $IF 2>/dev/null
 	unrule INPUT -p 4 -s 127.0.0.1 -d 127.0.0.2 -j DROP
@@ -56,12 +77,7 @@ ip tunnel add $IF mode ipip local 127.0.0.1 remote 127.0.0.2 || exit 1
 ip addr add "$ADDR" dev $IF
 ip link set $IF mtu 1420 up
 echo 0 > /proc/sys/net/ipv4/conf/$IF/rp_filter
-
-# the encapsulated copy of every outgoing packet must not come back in
-rule INPUT -p 4 -s 127.0.0.1 -d 127.0.0.2 -j DROP
-rule INPUT -i $IF -j ACCEPT
-rule FORWARD -i $IF -j ACCEPT
-rule FORWARD -o $IF -j ACCEPT
+rules
 
 $W run /tmp/wg54.key "$PEER" "$EP" "$PORT" $IF "$KA" $NTP > /tmp/wg54.log 2>&1 &
 echo $! > /tmp/wg54.pid

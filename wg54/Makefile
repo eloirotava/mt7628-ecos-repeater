@@ -24,7 +24,7 @@ build/wg54: $(SRC) $(R)/wg/wg_proto.h | build
 	$(CC) $(CFLAGS) $(LDFLAGS) -o build/wg54.elf $(SRC)
 	cp build/wg54.elf $@
 	$(CROSS)strip -s $(STRIP_R) $@
-	cp wg54.sh build/
+	cp wg54.sh boot.sh build/
 
 build:
 	mkdir -p build
