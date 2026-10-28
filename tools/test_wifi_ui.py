@@ -49,6 +49,8 @@ assert parser.modes == {'ap', 'repeater'}
 assert 'lang="en"' in page and not re.search('[\u3400-\u9fff]', page)
 assert 'href="/llms.txt"' in page and (web / 'llms.txt').is_file() and (web / 'agent_api.txt').is_file()
 assert '<title>MT7628KN Wi-Fi Extender</title>' in page and 'Smart Plug' not in page
+assert 'agent_api' not in page, 'the page announces only /llms.txt; the rest is discovered from it'
+assert '/agent_api.txt' in (web / 'llms.txt').read_text()
 assert page.count('<%') == 1, 'only the state CGI tag may appear; webcomp parses <%'
 for endpoint in ('wifi_state', 'wifi_apply', 'wifi_scan', 'admin_apply', 'system_apply', 'ntun_apply'):
     assert (web / f'{endpoint}.html').is_file(), endpoint
@@ -84,3 +86,12 @@ with tempfile.TemporaryDirectory(prefix='tomada-dhcp-tests-') as temp:
     subprocess.run(['gcc',str(cfile),'-o',str(binary)],check=True)
     subprocess.run([str(binary)],check=True)
 print('PASS: bridged AP/repeater cold boot uses DHCP despite a legacy static-IP setting')
+
+# WireGuard protocol core (wg/wg_proto.c): keyed BLAKE2s KAT and TAI64N.
+# Interop with a real wg0: wg_host_test <priv> <pub> <ip> <port> <tunnel-src> <ping-dst>
+router = repo / 'ra305x_ap_adv/ra305x_router'
+with tempfile.TemporaryDirectory(prefix='tomada-wg-tests-') as temp:
+    binary = Path(temp) / 'wg_host_test'
+    sources = [repo / 'tools/wg_host_test.c', router / 'wg/wg_proto.c'] + [router / 'ntun' / f for f in ('blake2s.c', 'c25519.c', 'aead.c', 'sha2.c')]
+    subprocess.run(['gcc', '-O2', '-std=gnu99', '-Wall', f'-I{router}/ntun', f'-I{router}/wg', '-o', str(binary)] + [str(f) for f in sources], check=True)
+    subprocess.run([str(binary), '--selftest'], check=True)
