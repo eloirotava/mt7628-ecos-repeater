@@ -38,6 +38,7 @@ function fixture(state, opts = {}) {
   };
   els['wifi-form'].querySelectorAll = () => [els.apply];
   els['scan-table'].tBodies = [element('tbody')];
+  els['startup-lines'].appendChild = c => { if (c.id) els[c.id] = c; return c; };
   const calls = [];
   let current = Object.assign({}, state);
   const context = {TextEncoder, TextDecoder, URLSearchParams, Uint8Array, AbortSignal, console, Promise, Object, Math, Date, JSON,
@@ -159,10 +160,20 @@ const submit = f => f.els['wifi-form'].listeners.submit({preventDefault() {}});
   f = fixture(withWg({enabled: 1, state: 'connected', status: 'Connected to 164.163.10.88:51820', handshake_age: 12, rx_bytes: 2048, tx_bytes: 512}));
   assert.strictEqual(f.els['st-wg'].className, 'ok'); assert(f.els['st-wg'].textContent.includes('handshake 12 s ago')); assert(f.els['st-wg'].textContent.includes('2.0 KB'));
 
+  /* Startup script */
+  f = fixture(Object.assign({}, base, {startup: [{command: 'net route add a b c', result: 'ok'}, {command: 'bogus', result: 'unknown command'}].concat(Array(6).fill({command: '', result: ''}))}));
+  assert.strictEqual(f.els['startup-1'].value, 'net route add a b c'); assert.strictEqual(f.els['startup-result-1'].textContent, 'Last boot: ok');
+  assert.strictEqual(f.els['startup-result-2'].className, 'bad'); assert.strictEqual(f.els['startup-result-3'].textContent, '');
+  const su = f.els['startup-form'].listeners.submit;
+  f.els['startup-4'].value = 'reboot'; await su({preventDefault() {}}); assert.strictEqual(f.posts().length, 0); assert(f.els['startup-msg'].textContent.includes('reboot'));
+  f.els['startup-4'].value = 'cfg set SYS_NAME x'; await su({preventDefault() {}});
+  p = f.posts()[0]; assert.strictEqual(p.url, '/startup_apply.html'); assert.strictEqual(p.options.body.get('COMMAND1'), 'net route add a b c'); assert.strictEqual(p.options.body.get('COMMAND4'), 'cfg set SYS_NAME x'); assert.strictEqual(p.options.body.get('COMMAND8'), '');
+  assert(f.els['startup-msg'].textContent.includes('next boot'));
+
   /* System actions need confirmation */
   f = fixture(base, {confirm: false}); await f.els.factory.listeners.click(); assert.strictEqual(f.posts().length, 0);
   f = fixture(base); await f.els.factory.listeners.click(); assert.strictEqual(f.posts()[0].options.body.get('ACTION'), 'factory');
   f = fixture(base); await f.els.reboot.listeners.click(); assert.strictEqual(f.posts()[0].options.body.get('ACTION'), 'reboot');
 
-  console.log('PASS: status rendering, scan parsing and selection, Wi-Fi, admin and WireGuard validation, POST fields, system actions');
+  console.log('PASS: status rendering, scan parsing and selection, Wi-Fi, admin, WireGuard and startup script validation, POST fields, system actions');
 })().catch(e => { console.error(e); process.exitCode = 1; });

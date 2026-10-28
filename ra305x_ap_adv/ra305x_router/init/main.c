@@ -59,6 +59,7 @@ extern void RT_staticrt_allset(void);
 extern void cyg_ntp_start(void);
 extern int  HTTPD_init(void);
 extern void wg_ecos_start(void);
+extern void CLI_boot_start(void);
 #ifdef CONFIG_USBHOST
 extern int usb_test_init(void);
 #endif
@@ -189,6 +190,7 @@ int main(void)
     }
 
 	CLI_start(1);
+	CLI_boot_start(); /* startup script (SYS_BOOT1..8), after the LAN is up */
 #ifdef CONFIG_USBHOST
 	usb_test_init();
 #endif

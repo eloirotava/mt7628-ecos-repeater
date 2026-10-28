@@ -43,7 +43,7 @@ page = (web / 'index.html').read_text()
 parser = FormParser()
 parser.feed(page)
 script = page[page.rindex('<script>'):]
-js_ids = set(re.findall(r"\$\('([^']+)'\)", script))
+js_ids = {i for i in re.findall(r"\$\('([^']+)'\)", script) if not i.endswith('-')}
 assert js_ids <= parser.ids, js_ids - parser.ids
 assert parser.modes == {'ap', 'repeater'}
 assert 'lang="en"' in page and not re.search('[\u3400-\u9fff]', page)
@@ -56,7 +56,7 @@ reset = reset[:reset.index('\n}\n')]
 assert '_KEY' not in reset, 'factory reset must erase the WireGuard device key, not carry it over'
 assert '/agent_api.txt' in (web / 'llms.txt').read_text()
 assert page.count('<%') == 1, 'only the state CGI tag may appear; webcomp parses <%'
-for endpoint in ('wifi_state', 'wifi_apply', 'wifi_scan', 'admin_apply', 'system_apply', 'wg_apply'):
+for endpoint in ('wifi_state', 'wifi_apply', 'wifi_scan', 'admin_apply', 'system_apply', 'wg_apply', 'startup_apply'):
     assert (web / f'{endpoint}.html').is_file(), endpoint
 assert not (web / 'factorySetting.html').exists()
 assert 'WG_KEY' not in source, 'the web interface must never read the WireGuard device private key'
@@ -100,3 +100,10 @@ with tempfile.TemporaryDirectory(prefix='tomada-wg-tests-') as temp:
     sources = [repo / 'tools/wg_host_test.c', router / 'wg/wg_proto.c'] + [router / 'crypto' / f for f in ('blake2s.c', 'c25519.c', 'aead.c', 'sha2.c')]
     subprocess.run(['gcc', '-O2', '-std=gnu99', '-Wall', f'-I{router}/crypto', f'-I{router}/wg', '-o', str(binary)] + [str(f) for f in sources], check=True)
     subprocess.run([str(binary), '--selftest'], check=True)
+
+# Startup script executor (cli/cmd_boot.c) with a fake command tree
+with tempfile.TemporaryDirectory(prefix='tomada-boot-tests-') as temp:
+    binary = Path(temp) / 'cli_boot_test'
+    subprocess.run(['gcc', '-std=gnu99', '-Wall', '-DCLI_BOOT_HOST_TEST', f'-I{router}/cli', '-o', str(binary), str(repo / 'tools/cli_boot_test.c')], check=True)
+    subprocess.run([str(binary)], check=True, stdout=subprocess.PIPE)
+    print('PASS: startup script command-tree walk, results and isolation from the config')

@@ -3,7 +3,7 @@
 include $(TOPDIR)/.config
 include $(TOPDIR)/rules.mak
 
-ALL_OBJS = cmd_proc.o cmd_main.o io_util.o ramboot.o ramboot_jump.o
+ALL_OBJS = cmd_proc.o cmd_main.o io_util.o ramboot.o ramboot_jump.o cmd_boot.o
 ALL_OBJS +=  cmd_wireless.o 
 
 ifdef CONFIG_CLI_CFG_CMD 

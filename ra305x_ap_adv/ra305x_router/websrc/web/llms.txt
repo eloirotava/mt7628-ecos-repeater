@@ -47,6 +47,10 @@ The device can join a WireGuard server as a peer (initiator only, one server). O
 3. POST /wg_apply.html ENABLED=1&ADDRESS=<tunnel address/prefix, e.g. 10.8.0.30/24>&PEER_PUBLIC_KEY=<server public key>&ENDPOINT=<server host>&PORT=<51820>&KEEPALIVE=25 . The device saves and restarts.
 4. After about one minute, GET /wifi_state.html: wireguard.state "connected" and a small wireguard.handshake_age mean the tunnel is up. The device needs Internet access for SNTP (pool.ntp.org) before its first handshake.
 
+## Optional: startup script
+
+Up to 8 console commands run once at every boot, about 20 seconds after start, in order, exactly as typed at the Telnet prompt (submenu names first, for example "net route add 10.9.0.0 255.255.0.0 192.168.1.2"). POST /startup_apply.html COMMAND1=...&COMMAND8=... (absent fields keep their line; empty clears it). GET /wifi_state.html shows each line and its result at the last boot in startup[]. reboot is not available to the script.
+
 ## Recovery
 
 - Lost credentials or a broken configuration: hold the reset button for more than 4 seconds, then start again from factory defaults.

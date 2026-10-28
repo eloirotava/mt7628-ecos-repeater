@@ -215,6 +215,15 @@
 #define CFG_SYS_Language	CFG_SYS_(26,CFG_TYPE_INT)
 /* Entropy seed (crypto/sys_ecos.c), renewed every boot */
 #define CFG_SYS_RND_SEED	CFG_SYS_(46,CFG_TYPE_STR)
+/* Startup script lines (cli/cmd_boot.c) */
+#define CFG_SYS_BOOT1	CFG_SYS_(70,CFG_TYPE_STR)
+#define CFG_SYS_BOOT2	CFG_SYS_(71,CFG_TYPE_STR)
+#define CFG_SYS_BOOT3	CFG_SYS_(72,CFG_TYPE_STR)
+#define CFG_SYS_BOOT4	CFG_SYS_(73,CFG_TYPE_STR)
+#define CFG_SYS_BOOT5	CFG_SYS_(74,CFG_TYPE_STR)
+#define CFG_SYS_BOOT6	CFG_SYS_(75,CFG_TYPE_STR)
+#define CFG_SYS_BOOT7	CFG_SYS_(76,CFG_TYPE_STR)
+#define CFG_SYS_BOOT8	CFG_SYS_(77,CFG_TYPE_STR)
 /* WireGuard client (wg/wg_ecos.c) */
 #define CFG_SYS_WG_EN	CFG_SYS_(50,CFG_TYPE_STR)
 #define CFG_SYS_WG_KEY	CFG_SYS_(51,CFG_TYPE_STR)

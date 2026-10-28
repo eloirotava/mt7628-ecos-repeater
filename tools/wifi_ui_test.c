@@ -7,12 +7,13 @@ typedef int cyg_handle_t; typedef int cyg_thread; typedef int cyg_sem_t; typedef
 typedef struct { int method; } http_req;
 #define METHOD_POST 1
 static const char *names[12], *values[12];
-static char cfg[64][256], output[4096];
+static char cfg[64][256], output[8192];
 static int sets, fail_at=-1;
 static char *WEB_query(http_req *req,const char *key) { int i; for(i=0;i<12;i++)if(names[i]&&!strcmp(names[i],key))return (char *)values[i];return NULL; }
 static void WEB_printf(http_req *req,const char *fmt,...) { va_list ap;va_start(ap,fmt);vsnprintf(output+strlen(output),sizeof(output)-strlen(output),fmt,ap);va_end(ap); }
-static void CFG_get_str(int id,char *out) { strcpy(out,cfg[id]); }
-static int CFG_set_str(int id,char *val) { sets++; if(sets==fail_at)return -1;strcpy(cfg[id],val);return 0; }
+static int slot(int id) { return id >= 9001 ? 50 + id - 9001 : id; }
+static void CFG_get_str(int id,char *out) { strcpy(out,cfg[slot(id)]); }
+static int CFG_set_str(int id,char *val) { sets++; if(sets==fail_at)return -1;strcpy(cfg[slot(id)],val);return 0; }
 static int CFG_commit(int flags) { assert(flags==CFG_NO_EVENT);return 1; }
 static void cyg_thread_delay(int n) {}
 static void cyg_semaphore_init(cyg_sem_t *s,int n) {}
@@ -36,6 +37,8 @@ int wg_ecos_public_key(char b64[45]) { strcpy(b64,"cfMOYfs5ZT4ic035jD9qCG4UM/Kgp
 long wg_ecos_handshake_age(void) { return 12; }
 void wg_ecos_counters(unsigned long *rx, unsigned long *tx) { *rx = 436; *tx = 380; }
 int wg_b64_decode32(unsigned char out[32], const char *s) { size_t i; (void)out; if (strlen(s) != 44 || s[43] != '=') return -1; for (i = 0; i < 43; i++) if (!strchr("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", s[i])) return -1; return 0; }
+const int CLI_boot_ids[8] = { 9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008 };
+const char *CLI_boot_result(int n) { return n == 0 ? "ok" : "unknown command"; }
 /* IMPLEMENTATION */
 static int wifi_ui_restart(void) { return 0; }
 static int uplink_up=1;
@@ -113,6 +116,15 @@ int main(void) {
  WG("1","10.8.0.30/24",WGK,"br.example","51820","25","bad");CGI_wg_apply(&post);assert(strstr(output,"preshared"));assert(sets==0);
  WG("1","10.8.0.30/24",WGK,"br.example","51820","25","");CGI_wg_apply(&get);assert(strstr(output,"POST required"));assert(sets==0);
  setup("ap");strcpy(cfg[CFG_SYS_WG_EN],"1");strcpy(cfg[CFG_SYS_WG_PSK],"secret-psk");CGI_wifi_state(&post);assert(strstr(output,"\"wireguard\":{\"enabled\":1"));assert(strstr(output,"\"state\":\"connected\""));assert(strstr(output,"\"preshared_key_set\":1"));assert(strstr(output,"\"handshake_age\":12"));assert(!strstr(output,"secret-psk"));
+ /* Startup script */
+#define SU(a,b) do{setup("ap");for(i=0;i<12;i++)names[i]=NULL;names[0]="COMMAND1";values[0]=(a);names[1]="COMMAND3";values[1]=(b);}while(0)
+ SU("net route add 10.9.0.0 255.255.0.0 192.168.1.2","");strcpy(cfg[51],"keep me");CGI_startup_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[50],"net route add 10.9.0.0 255.255.0.0 192.168.1.2"));assert(!strcmp(cfg[52],""));assert(!strcmp(cfg[51],"keep me"));assert(reboots==0);
+ SU("bad\nline","");CGI_startup_apply(&post);assert(strstr(output,"printable"));assert(sets==0);
+ {static char longline[260];memset(longline,'a',201);longline[201]=0;SU(longline,"");CGI_startup_apply(&post);assert(strstr(output,"longer"));assert(sets==0);}
+ SU("x","");CGI_startup_apply(&get);assert(strstr(output,"POST required"));assert(sets==0);
+ SU("x","");save_fail=1;CGI_startup_apply(&post);assert(strstr(output,"saving"));
+ setup("ap");strcpy(cfg[50],"net route add a b c");strcpy(cfg[51],"");CGI_wifi_state(&post);assert(strstr(output,"\"startup\":[{\"command\":\"net route add a b c\",\"result\":\"ok\"},{\"command\":\"\",\"result\":\"\"}"));
+ puts("PASS: startup script validation, keep/clear semantics, no restart and state");
  puts("PASS: WireGuard validation, preshared key handling, admin requirement, save+restart and state");
  puts("PASS: admin credentials validation, current-password check and save");
  puts("PASS: server validation, AP/repeater mapping, open/mixed security, rollback and JSON escaping");

@@ -236,6 +236,8 @@ extern int wg_ecos_public_key(char b64[45]);
 extern long wg_ecos_handshake_age(void);
 extern void wg_ecos_counters(unsigned long *rx, unsigned long *tx);
 extern int wg_b64_decode32(unsigned char out[32], const char *s);
+extern const char *CLI_boot_result(int n);
+extern const int CLI_boot_ids[8];
 
 static void wifi_ui_worker(cyg_addrword_t arg)
 {
@@ -335,6 +337,20 @@ void CGI_wifi_state(http_req *req)
         WEB_printf(req, ",\"state\":\"%s\",\"status\":", st >= 0 && st <= 5 ? names[st] : "error");
         wifi_ui_json(req, wg_ecos_status());
         WEB_printf(req, ",\"handshake_age\":%ld,\"rx_bytes\":%lu,\"tx_bytes\":%lu}", wg_ecos_handshake_age(), rx, tx);
+    }
+    {
+        int n;
+        WEB_printf(req, ",\"startup\":[");
+        for (n = 0; n < 8; n++) {
+            val[0] = '\0';
+            CFG_get_str(CLI_boot_ids[n], val);
+            WEB_printf(req, "%s{\"command\":", n ? "," : "");
+            wifi_ui_json(req, val);
+            WEB_printf(req, ",\"result\":");
+            wifi_ui_json(req, val[0] ? CLI_boot_result(n) : "");
+            WEB_printf(req, "}");
+        }
+        WEB_printf(req, "]");
     }
     WEB_printf(req, "}");
 }
@@ -7107,6 +7123,28 @@ void CGI_wg_apply(http_req *req)
     if (CFG_save_user()) { WEB_printf(req,"ERROR: saving to flash failed"); return; }
     WEB_printf(req,"OK");
     mon_snd_cmd(MON_CMD_REBOOT);
+}
+
+/* Startup script: COMMAND1..COMMAND8, console commands run at the next boot.
+ * Saved without restarting; absent fields keep their stored line. */
+void CGI_startup_apply(http_req *req)
+{
+    char key[12], *v[8];
+    int n, i;
+    if (req->method != METHOD_POST) { WEB_printf(req,"ERROR: POST required"); return; }
+    for (n = 0; n < 8; n++) {
+        sprintf(key, "COMMAND%d", n + 1);
+        v[n] = WEB_query(req, key);
+        if (!v[n]) continue;
+        if (strlen(v[n]) > 200) { WEB_printf(req,"ERROR: COMMAND%d is longer than 200 characters", n + 1); return; }
+        for (i = 0; v[n][i]; i++)
+            if ((unsigned char)v[n][i] < 32 || (unsigned char)v[n][i] > 126) { WEB_printf(req,"ERROR: COMMAND%d must be printable ASCII on one line", n + 1); return; }
+    }
+    for (n = 0; n < 8; n++)
+        if (v[n] && CFG_set_str(CLI_boot_ids[n], v[n]) < 0) { WEB_printf(req,"ERROR: settings could not be applied"); return; }
+    CFG_commit(CFG_NO_EVENT);
+    if (CFG_save_user()) { WEB_printf(req,"ERROR: saving to flash failed"); return; }
+    WEB_printf(req,"OK");
 }
 
 /* Site survey as JSON; the page parses the driver's fixed-width table. */

@@ -160,6 +160,16 @@ a{color:var(--accent)}
 </section>
 </form>
 
+<form id="startup-form" novalidate>
+<section aria-labelledby="h-startup" id="startup">
+<h2 id="h-startup">Startup script</h2>
+<p class="hint">Console commands run once at every boot, in order, about 20 seconds after start, exactly as typed at the Telnet prompt (for example <code>net route add 10.9.0.0 255.255.0.0 192.168.1.2</code>). Saved without restarting; results of the last boot are shown next to each line.</p>
+<div id="startup-lines"></div>
+<div class="row"><button type="submit">Save script</button></div>
+<p id="startup-msg" class="msg" role="status" aria-live="polite"></p>
+</section>
+</form>
+
 <section aria-labelledby="h-system">
 <h2 id="h-system">System</h2>
 <div class="row">
@@ -414,6 +424,40 @@ adminForm.addEventListener('submit', async function (e) {
   } catch (err) { msg(out, err.message || 'Could not save the credentials.', 'bad'); }
 });
 
+(function () {
+  var box = $('startup-lines');
+  for (var i = 1; i <= 8; i++) {
+    var lab = document.createElement('label'); lab.htmlFor = 'startup-' + i; lab.textContent = 'Line ' + i;
+    var inp = document.createElement('input'); inp.id = 'startup-' + i; inp.maxLength = 200; inp.spellcheck = false; inp.autocomplete = 'off';
+    var res = document.createElement('small'); res.id = 'startup-result-' + i;
+    box.appendChild(lab); box.appendChild(inp); box.appendChild(res);
+  }
+}());
+function fillStartup() {
+  (state.startup || []).forEach(function (l, i) {
+    var inp = $('startup-' + (i + 1)), res = $('startup-result-' + (i + 1));
+    if (!inp) return;
+    inp.value = l.command || '';
+    res.textContent = l.command ? 'Last boot: ' + (l.result || '–') : '';
+    res.className = /^(ok|pending)$/.test(l.result || '') || !l.command ? '' : 'bad';
+  });
+}
+$('startup-form').addEventListener('submit', async function (e) {
+  e.preventDefault();
+  var out = $('startup-msg'), body = new URLSearchParams();
+  for (var i = 1; i <= 8; i++) {
+    var v = $('startup-' + i).value.trim();
+    if (!/^[\x20-\x7e]{0,200}$/.test(v)) return msg(out, 'Line ' + i + ': printable ASCII, up to 200 characters.', 'bad');
+    if (/^reboot\b/.test(v)) return msg(out, 'Line ' + i + ': reboot is not allowed in the startup script.', 'bad');
+    body.set('COMMAND' + i, v);
+  }
+  try {
+    var text = await post('/startup_apply.html', body);
+    if (text !== 'OK') throw new Error(text.replace(/^ERROR:\s*/, ''));
+    msg(out, 'Saved. The script runs at the next boot.', 'good');
+  } catch (err) { msg(out, err.message || 'Could not save the script.', 'bad'); }
+});
+
 $('wg-copy').addEventListener('click', async function () {
   var key = (state.wireguard || {}).public_key, out = $('wg-msg');
   if (!key) return msg(out, 'The device key is not ready yet.', 'bad');
@@ -464,7 +508,7 @@ async function system(action, question, done) {
 $('reboot').addEventListener('click', function () { system('reboot', 'Restart the device now?', 'Restarting… reload this page in about one minute.'); });
 $('factory').addEventListener('click', function () { system('factory', 'Erase all settings and restore factory defaults? The device restarts with an open network named “Extender-<MAC>” and no admin password.', 'Restoring defaults… reconnect to the “Extender-…” network in about one minute.'); });
 
-renderStatus(); fillForms();
+renderStatus(); fillForms(); fillStartup();
 setInterval(function () { if (!document.hidden) refresh(); }, 15000);
 }());
 </script>
