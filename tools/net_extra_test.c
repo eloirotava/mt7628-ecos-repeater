@@ -19,6 +19,7 @@ typedef int cyg_bool_t;
 static cyg_bool_t netif_alias_cfg(const char *intf, struct ip_set *setp) { (void)intf; (void)setp; return 1; }
 static int DHCPS_net_start(const char *ifname, unsigned long ip, unsigned long mask, unsigned long dns) { (void)ifname; (void)ip; (void)mask; (void)dns; return 0; }
 static unsigned long DNS_group_get(int i) { (void)i; return 0; }
+static void FW_setrule(char *r) { (void)r; }
 #define extern static /* the file's extern declarations refer to the stubs above */
 #include "net_extra.c"
 #undef extern
@@ -49,6 +50,9 @@ int main(void)
 	assert(net_extra_ifnames(names, 3) == 2 && !strcmp(names[0], "ra1") && !strcmp(names[1], "ra2"));
 
 	net_extra_fw_rules(collect);
+	assert(nrules == 0); /* not before the Wi-Fi is up */
+	net_extra_fw_ready();
+	net_extra_fw_rules(collect);
 	/* replies to connections others open into each network */
 	assert(find("pass out quick on ra1 from any to any keep state\n") >= 0);
 	/* IoT reaches neither the device, the LAN, the other network nor WireGuard */
@@ -70,6 +74,9 @@ int main(void)
 
 	/* device access and lan in the list */
 	nrules = 0;
+	net_extra_fw_rules(collect);
+	assert(nrules == 0); /* once per firewall generation */
+	net_extra_fw_flushed();
 	strcpy(cfg[CFG_SYS_NET2_REACH], "device,lan");
 	net_extra_fw_rules(collect);
 	assert(find("block in quick on ra1 from any to 10.0.2.1/32\n") < 0);
@@ -78,6 +85,7 @@ int main(void)
 	assert(find("block in quick on ra1 from any to 10.8.0.0/24\n") >= 0);
 	/* "lan" must not match "lanx" */
 	nrules = 0;
+	net_extra_fw_flushed();
 	strcpy(cfg[CFG_SYS_NET2_REACH], "lanx,wgx");
 	net_extra_fw_rules(collect);
 	assert(find("block in quick on ra1 from any to 10.0.1.0/24\n") >= 0 && find("block in quick on ra1 from any to 10.8.0.0/24\n") >= 0);

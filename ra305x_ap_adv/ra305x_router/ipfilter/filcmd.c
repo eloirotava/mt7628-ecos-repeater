@@ -980,6 +980,11 @@ void FW_flush(void)
 	//flushfilter("sa");
 	nat_fwsync_down();
 	FW_ruleflush();
+	{
+		/* routed-network isolation rules are gone with the rest */
+		extern void net_extra_fw_flushed(void);
+		net_extra_fw_flushed();
+	}
 
 	fw_default_outpolicy = 0;
 

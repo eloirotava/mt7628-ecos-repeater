@@ -19,6 +19,7 @@
 extern int CFG_get_str(int id, char *val);
 extern cyg_bool_t netif_alias_cfg(const char *intf, struct ip_set *setp);
 extern int DHCPS_net_start(const char *ifname, unsigned long ip, unsigned long mask, unsigned long dns);
+extern void FW_setrule(char *cmdbuf);
 
 static const int ip_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_IP, CFG_SYS_NET3_IP, CFG_SYS_NET4_IP };
 static const int reach_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_REACH, CFG_SYS_NET3_REACH, CFG_SYS_NET4_REACH };
@@ -89,7 +90,19 @@ void net_extra_apply(void)
 		/* dns 0: offer the upstream DNS current at each reply (reachable through NAT) */
 		DHCPS_net_start(names[i], ip, mask, 0);
 	}
+	/* Wi-Fi is up: isolation rules may be loaded now (no-op if the
+	 * firewall already has them); later firewall reloads add them again. */
+	net_extra_fw_ready();
+	if (count) net_extra_fw_rules(FW_setrule);
 }
+
+/* Isolation rules are loaded once per firewall generation and only after the
+ * Wi-Fi interfaces are up: running this from the monitor thread while the
+ * driver initialises shifted the boot timing enough to expose a driver race
+ * (TX before the BSS is ready -> crash in ParseTxSPacket). */
+static volatile int wifi_ready, fw_applied;
+void net_extra_fw_ready(void) { wifi_ready = 1; }
+void net_extra_fw_flushed(void) { fw_applied = 0; }
 
 /* comma list membership, e.g. has("lan,wg", "wg") */
 static int has(const char *list, const char *item)
@@ -128,8 +141,12 @@ void net_extra_fw_rules(void (*set)(char *))
 	char names[NET_EXTRA_MAX][8], reach[NET_EXTRA_MAX][64], val[64], buf[160];
 	unsigned long ip[NET_EXTRA_MAX], mask[NET_EXTRA_MAX], wg_ip = 0, wg_mask = 0;
 	int internet[NET_EXTRA_MAX], num[NET_EXTRA_MAX];
-	int i, j, count = net_extra_ifnames(names, NET_EXTRA_MAX);
+	int i, j, count;
 	const unsigned long rescue = inet_addr("192.168.11.1");
+
+	if (!wifi_ready || fw_applied) return;
+	fw_applied = 1;
+	count = net_extra_ifnames(names, NET_EXTRA_MAX);
 
 	val[0] = 0;
 	CFG_get_str(CFG_SYS_WG_ADDR, val);
@@ -143,7 +160,7 @@ void net_extra_fw_rules(void (*set)(char *))
 		CFG_get_str(internet_ids[num[i] - 2], val);
 		internet[i] = strcmp(val, "0") != 0;
 	}
-	diag_printf("net: isolation rules for %d routed network(s)\n", count);
+	if (count) diag_printf("net: isolation rules for %d routed network(s)\n", count);
 	for (i = 0; i < count; i++) {
 		const char *x = names[i];
 		snprintf(buf, sizeof buf, "pass out quick on %s from any to any keep state\n", x);
