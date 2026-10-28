@@ -47,14 +47,15 @@ js_ids = {i for i in re.findall(r"\$\('([^']+)'\)", script) if not i.endswith('-
 assert js_ids <= parser.ids, js_ids - parser.ids
 assert parser.modes == {'ap', 'repeater', 'router'}
 assert 'lang="en"' in page and not re.search('[\u3400-\u9fff]', page)
-assert 'href="/llms.txt"' in page and (web / 'llms.txt').is_file() and (web / 'agent_api.txt').is_file()
+assert 'href="/llms.txt"' in page and (web / 'llms.txt').is_file() and not (web / 'agent_api.txt').exists()
 assert '<title>MT7628KN Wi-Fi Extender</title>' in page and 'Smart Plug' not in page
-assert 'agent_api' not in page, 'the page announces only /llms.txt; the rest is discovered from it'
+assert 'agent_api' not in page, 'the page announces only /llms.txt'
 prof = (repo / 'ra305x_ap_adv/ra305x_router/cfg/cfg_prof.c').read_bytes().decode('latin1')
 reset = prof[prof.index('void CFG_reset_default()'):]
 reset = reset[:reset.index('\n}\n')]
 assert '_KEY' not in reset, 'factory reset must erase the WireGuard device key, not carry it over'
-assert '/agent_api.txt' in (web / 'llms.txt').read_text()
+llms = (web / 'llms.txt').read_text()
+assert '## API reference' in llms and 'agent_api' not in llms, 'one file for agents: guide and API reference'
 assert page.count('<%') == 1, 'only the state CGI tag may appear; webcomp parses <%'
 for endpoint in ('wifi_state', 'wifi_apply', 'wifi_scan', 'admin_apply', 'system_apply', 'wg_apply', 'startup_apply', 'networks_apply'):
     assert (web / f'{endpoint}.html').is_file(), endpoint
@@ -62,7 +63,7 @@ assert not (web / 'factorySetting.html').exists()
 assert 'WG_KEY' not in source, 'the web interface must never read the WireGuard device private key'
 assert not (web / 'ntun_apply.html').exists()
 cfg = (repo / 'ra305x_ap_adv/ra305x_router/webpages/web.cfg').read_text()
-assert 'llms.txt' in cfg and 'agent_api.txt' in cfg
+assert 'llms.txt' in cfg and 'agent_api' not in cfg
 print('PASS: HTML form wiring, English interface and local agent instructions')
 
 # Exercise the actual installer against a NOR flash model, including failures.
