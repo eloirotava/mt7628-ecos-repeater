@@ -86,6 +86,43 @@ int net_extra_ifnames(char names[][8], int max)
 }
 
 /* After the Wi-Fi interfaces are up: address and DHCP for routed networks. */
+#ifndef NET_EXTRA_HOST_TEST
+/* Policy routing: Internet-bound packets from a network sent through the
+ * tunnel leave by the route to the WireGuard server instead of the default
+ * route (route-to is compiled out of this IPFilter). */
+extern u_long (*ip_policy_nexthop)(struct mbuf *);
+extern struct ifnet *ifunit(const char *name);
+static struct ifnet *wg_src_ifp[NET_EXTRA_MAX];
+static u_long wg_nexthop;
+
+static u_long policy_nexthop(struct mbuf *m)
+{
+	int i;
+	for (i = 0; i < NET_EXTRA_MAX; i++)
+		if (wg_src_ifp[i] && m->m_pkthdr.rcvif == wg_src_ifp[i])
+			return wg_nexthop;
+	return 0;
+}
+
+static void policy_setup(char names[][8], int count)
+{
+	char val[64];
+	unsigned long ip, mask, nh;
+	int i, any = 0;
+	val[0] = 0;
+	CFG_get_str(CFG_SYS_WG_ADDR, val);
+	if (net_extra_parse(val, &ip, &mask)) return;
+	/* the server: first host of the tunnel subnet, or the second if that is us */
+	nh = (ip & mask) | htonl(1);
+	if (nh == ip) nh = (ip & mask) | htonl(2);
+	for (i = 0; i < count && i < NET_EXTRA_MAX; i++)
+		if (net_extra_via_wg(names[i][2] - '0' + 1) && (wg_src_ifp[i] = ifunit(names[i])))
+			any = 1;
+	wg_nexthop = nh;
+	if (any) ip_policy_nexthop = policy_nexthop;
+}
+#endif
+
 void net_extra_apply(void)
 {
 	char names[NET_EXTRA_MAX][8];
@@ -104,6 +141,9 @@ void net_extra_apply(void)
 	}
 	/* Wi-Fi is up: isolation rules may be loaded now (no-op if the
 	 * firewall already has them); later firewall reloads add them again. */
+#ifndef NET_EXTRA_HOST_TEST
+	policy_setup(names, count);
+#endif
 	net_extra_fw_ready();
 	if (count) net_extra_fw_rules(FW_setrule);
 }

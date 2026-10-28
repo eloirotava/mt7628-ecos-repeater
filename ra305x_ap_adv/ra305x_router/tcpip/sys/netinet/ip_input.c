@@ -201,6 +201,10 @@ ip_dn_ctl_t *ip_dn_ctl_ptr;
 #endif
 
 int (*fr_checkp) __P((struct ip *, int, struct ifnet *, int, struct mbuf **)) = NULL;
+/* Policy routing for routed networks sent through a tunnel: for a packet that
+ * would leave by the default route, returns the address (network order) whose
+ * route is used instead, or 0 to keep the normal route. */
+u_long (*ip_policy_nexthop) __P((struct mbuf *)) = NULL;
 
 
 /*
@@ -1651,6 +1655,7 @@ ip_forward(m, srcrt)
 	struct mbuf *mcopy;
 	n_long dest;
 	struct ifnet *destifp;
+	struct route policy_ro;
 #ifdef IPSEC
 	struct ifnet dummyifp;
 #endif
@@ -1698,6 +1703,31 @@ ip_forward(m, srcrt)
 			return;
 		}
 		rt = ipforward_rt.ro_rt;
+	}
+
+	policy_ro.ro_rt = 0;
+	if (ip_policy_nexthop && satosin(rt_key(rt))->sin_addr.s_addr == 0) {
+		u_long nh = (*ip_policy_nexthop)(m);
+		if (nh) {
+			struct sockaddr_in nhs;
+			bzero(&nhs, sizeof(nhs));
+			nhs.sin_family = AF_INET;
+			nhs.sin_len = sizeof(nhs);
+			nhs.sin_addr.s_addr = nh;
+			/* ro_dst stays the packet's destination so ip_output keeps the route */
+			bzero(&policy_ro, sizeof(policy_ro));
+			*(struct sockaddr_in *)&policy_ro.ro_dst = *sin;
+			policy_ro.ro_rt = rtalloc1((struct sockaddr *)&nhs, 0, 0UL);
+			if (policy_ro.ro_rt == 0 || satosin(rt_key(policy_ro.ro_rt))->sin_addr.s_addr == 0) {
+				/* tunnel route missing: drop rather than leak to the WAN */
+				if (policy_ro.ro_rt)
+					RTFREE(policy_ro.ro_rt);
+				ipstat.ips_cantforward++;
+				m_freem(m);
+				return;
+			}
+			rt = policy_ro.ro_rt;
+		}
 	}
 
 	/*
@@ -1757,6 +1787,19 @@ ip_forward(m, srcrt)
 		}
 	}
 
+	if (policy_ro.ro_rt) {
+		error = ip_output(m, (struct mbuf *)0, &policy_ro, IP_FORWARDING, 0);
+		if (policy_ro.ro_rt)
+			RTFREE(policy_ro.ro_rt);
+		/* no fast-forward flow: it would skip the policy next time */
+		if (mcopy)
+			m_freem(mcopy);
+		if (error)
+			ipstat.ips_cantforward++;
+		else
+			ipstat.ips_forward++;
+		return;
+	}
 	error = ip_output(m, (struct mbuf *)0, &ipforward_rt, 
 			  IP_FORWARDING, 0);
 	if (error)
