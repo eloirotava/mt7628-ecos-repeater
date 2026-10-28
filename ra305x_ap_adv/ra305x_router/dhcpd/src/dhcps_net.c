@@ -174,6 +174,14 @@ static void handle(struct net *n, struct dhcpd *req)
 	}
 }
 
+/* DHCPD_PktCheck with a log line per DHCP packet seen (diagnostics) */
+static int pkt_check(struct ifnet *ifp, char *head, struct mbuf *m, struct eth_input_func *hn)
+{
+	int r = DHCPD_PktCheck(ifp, head, m, hn);
+	if (r) diag_printf("dhcps hook %s%d: udp/67 r=%d len=%d\n", ifp->if_name, ifp->if_unit, r, m->m_pkthdr.len);
+	return r;
+}
+
 static void server_thread(cyg_addrword_t arg)
 {
 	struct timeval tv;
@@ -184,11 +192,15 @@ static void server_thread(cyg_addrword_t arg)
 		cyg_mutex_lock(&lock);
 		for (i = 0; i < n_nets; i++) {
 			struct net *n = &nets[i];
-			if (!n->sock) n->sock = LIB_pktsocket_create(n->ifname, DHCPD_PktCheck);
+			if (!n->sock) {
+				n->sock = LIB_pktsocket_create(n->ifname, pkt_check);
+				diag_printf("dhcps %s: packet socket %s\n", n->ifname, n->sock ? "ready" : "FAILED");
+			}
 			if (!n->sock) continue;
 			tv.tv_sec = 0;
 			tv.tv_usec = 100000;
 			fd = DHCPD_rcv(n->sock, &tv, 0);
+			if (fd == -1) diag_printf("dhcps %s: dropped (checksum/length)\n", n->ifname);
 			if (fd == 0 || fd == -1) continue;
 			if (DHCPD_ReadPacket(&info, fd) > 0) handle(n, &info.payload);
 			LIB_rcvinfo_close(fd);
