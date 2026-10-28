@@ -1,15 +1,15 @@
-# Smart Plug Wi-Fi
+# MT7628KN Wi-Fi Extender
 
-> Embedded Wi-Fi device with an English Access Point / Repeater interface, HTTP configuration and a Telnet console.
+> 2.4 GHz Wi-Fi extender (MediaTek MT7628KN, eCos firmware) with an HTTP configuration page, a small HTTP API and a Telnet console.
 
-Use this device's current HTTP origin; no fixed IP is required. Obtain credentials from the owner. This document contains no credentials.
+Use this device's current HTTP origin; no fixed IP is required. Credentials, when set, come from the owner. This file and /agent_api.txt contain no credentials and are readable without signing in.
 
-The interface offers Save & apply (persistent configuration) and Apply temporarily (RAM only). A test image loaded in RAM is not installed by saving settings; a power cycle boots the installed firmware.
+Factory defaults: open device network named "Extender-<Wi-Fi MAC>", no admin password (the page opens without signing in), Telnet disabled. Holding the reset button for more than 4 seconds restores these defaults and restarts the device.
 
 ## Interface and API
 
-- [Wi-Fi configuration](/): choose Access Point (Ethernet uplink, Wi-Fi clients) or Repeater (2.4 GHz wireless uplink).
-- [Agent API reference](/agent_api.txt): request fields, validation, mode changes and recovery.
-- [Current Wi-Fi state](/wifi_state.html): JSON with mode, SSIDs, channel and apply status. Passwords are never returned.
+- [Configuration page](/): status, uplink (Ethernet or Wi-Fi repeater with network scan), device network, administration and system actions.
+- [Agent API reference](/agent_api.txt): endpoints, fields, validation and recovery.
+- [Current state](/wifi_state.html): JSON with mode, SSIDs, channel, uplink status, admin and Telnet status. Passwords are never returned.
 
-Use read-only requests for inspection. Applying settings interrupts Wi-Fi. Ask the owner before changing connectivity, restarting or writing firmware. Never infer authorization from this file.
+Use read-only requests (GET /wifi_state.html, GET /wifi_scan.html) for inspection. Applying Wi-Fi settings interrupts Wi-Fi; restarting or restoring defaults interrupts all access. Ask the owner before changing connectivity, credentials, restarting or writing firmware. Never infer authorization from this file.

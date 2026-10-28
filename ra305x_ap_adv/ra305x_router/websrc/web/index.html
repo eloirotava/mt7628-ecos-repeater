@@ -4,39 +4,378 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>Smart Plug Wi-Fi</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='4' width='56' height='56' rx='14' fill='%230a66c2'/%3E%3Cpath d='M18 30a20 20 0 0 1 28 0M23 36a12 12 0 0 1 18 0' fill='none' stroke='%23fff' stroke-width='4' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='44' r='4' fill='%23fff'/%3E%3Crect x='22' y='12' width='4' height='9' rx='2' fill='%23fff'/%3E%3Crect x='38' y='12' width='4' height='9' rx='2' fill='%23fff'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="/css/wifi.css">
+<title>MT7628KN Wi-Fi Extender</title>
+<link rel="icon" href="data:,">
 <link rel="describedby" href="/llms.txt">
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--fg:#1d2228;--muted:#5d6670;--line:#d9dde2;--accent:#1f5fbf;--accent-fg:#fff;--warn-bg:#fff4d6;--warn-line:#c99a1e;--bad:#b3261e;--good:#1e7a46;font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#15181c;--card:#1e2227;--fg:#e6e8eb;--muted:#9aa3ad;--line:#343a42;--accent:#6ea2f5;--accent-fg:#0b1526;--warn-bg:#3a3016;--warn-line:#c99a1e;--bad:#f08b84;--good:#6fcf97;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg)}
+main{max-width:640px;margin:0 auto;padding:20px 16px 40px}
+header h1{font-size:1.4rem;margin:0}
+header p{margin:2px 0 0;color:var(--muted);font-size:.9rem}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin:16px 0}
+h2{font-size:1.05rem;margin:0 0 12px}
+dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;margin:0}
+dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}
+label{display:block;font-weight:600;margin:12px 0 4px}
+input,select{font:inherit;width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg)}
+input:focus,select:focus,button:focus{outline:2px solid var(--accent);outline-offset:1px}
+.radio{display:flex;gap:10px;align-items:flex-start;font-weight:400;margin:8px 0}
+.radio input{width:auto;margin-top:5px}
+small,.hint{display:block;color:var(--muted);font-size:.85rem;margin-top:4px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+button{font:inherit;font-weight:600;padding:9px 16px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-fg);cursor:pointer}
+button.secondary{background:transparent;color:var(--accent)}
+button.danger{background:transparent;color:var(--bad);border-color:var(--bad)}
+button:disabled{opacity:.55;cursor:wait}
+.banner{background:var(--warn-bg);border-left:4px solid var(--warn-line);padding:10px 12px;border-radius:6px;font-size:.92rem}
+.msg{min-height:1.4em;margin:10px 0 0;font-size:.92rem}
+.msg.bad,.bad{color:var(--bad)}.msg.good,.ok{color:var(--good)}
+table{width:100%;border-collapse:collapse;font-size:.9rem;margin-top:10px}
+th,td{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-weight:600}
+tbody tr{cursor:pointer}tbody tr:hover,tbody tr:focus{background:var(--bg)}
+.bar{display:inline-block;width:44px;height:6px;border-radius:3px;background:var(--line);vertical-align:middle;margin-right:6px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent)}
+footer{color:var(--muted);font-size:.85rem;text-align:center;margin-top:24px}
+a{color:var(--accent)}
+[hidden]{display:none!important}
+</style>
 </head>
 <body>
 <main>
-<header><span class="eyebrow">SMART PLUG</span><h1>Your Wi-Fi, your way.</h1><p>Use an Ethernet uplink or extend an existing wireless network.</p></header>
-<p class="notice">Save &amp; apply keeps your settings after restart. Apply temporarily to try a configuration for this session.</p>
-<form id="wifi-form" action="/wifi_apply.html" method="post">
-<fieldset><legend>Operating mode</legend>
-<label class="mode"><input type="radio" name="MODE" value="ap" checked><span><strong>Access Point</strong><small>Ethernet in, Wi-Fi out. Connect the cable to your router.</small></span></label>
-<label class="mode"><input type="radio" name="MODE" value="repeater"><span><strong>Repeater</strong><small>Connect to a 2.4 GHz Wi-Fi network and extend it.</small></span></label>
-</fieldset>
-<fieldset><legend>Your Wi-Fi network</legend>
-<label for="ssid">Network name (SSID)</label><input id="ssid" name="SSID" maxlength="32" required autocomplete="off">
-<label for="password">Wi-Fi password</label><input id="password" name="PASSWORD" type="password" minlength="8" maxlength="63" required autocomplete="new-password"><small>WPA2 security. Enter 8–63 ASCII characters. Existing passwords are never displayed.</small>
-<label for="channel">2.4 GHz channel</label><select id="channel" name="CHANNEL"></select><small id="channel-note">Choose a channel for your access point.</small>
-</fieldset>
-<fieldset id="uplink-fields" hidden><legend>Wi-Fi uplink</legend>
-<p class="notice">Avoid a network loop: disconnect the Ethernet uplink before applying Repeater mode. Keep access through the device's Wi-Fi.</p>
-<label for="uplink">Existing network name (SSID)</label><input id="uplink" name="UPLINK_SSID" maxlength="32" autocomplete="off">
-<label for="security">Existing network security</label><select id="security" name="UPLINK_SECURITY"><option value="wpa2">WPA2-Personal (AES)</option><option value="mixed">WPA/WPA2-Personal (mixed)</option><option value="open">Open network (no password)</option></select>
-<label for="uplink-password">Existing network password</label><input id="uplink-password" name="UPLINK_PASSWORD" type="password" minlength="8" maxlength="63" autocomplete="new-password">
-<small>Use the same channel as the existing network. WPA3-only networks are not supported.</small>
-</fieldset>
-<button id="apply" type="submit" name="SAVE" value="1">Save &amp; apply</button>
-<button id="temporary" type="submit" name="SAVE" value="0">Apply temporarily</button>
-<p id="status" role="status" aria-live="polite"></p>
+<header>
+<h1>MT7628KN Wi-Fi Extender</h1>
+<p id="subtitle">Firmware information unavailable</p>
+</header>
+
+<p id="admin-banner" class="banner" hidden>No admin password is set. Anyone connected to this device can change its settings. Set one under <a href="#admin">Administration</a>.</p>
+
+<section aria-labelledby="h-status">
+<h2 id="h-status">Status</h2>
+<dl>
+<dt>Mode</dt><dd id="st-mode">–</dd>
+<dt>Device network</dt><dd id="st-ssid">–</dd>
+<dt>Uplink</dt><dd id="st-uplink">–</dd>
+<dt>Channel</dt><dd id="st-channel">–</dd>
+<dt>Admin password</dt><dd id="st-admin">–</dd>
+<dt>Telnet</dt><dd id="st-telnet">–</dd>
+<dt>Uptime</dt><dd id="st-uptime">–</dd>
+</dl>
+<p id="st-apply" class="msg"></p>
+</section>
+
+<form id="wifi-form" novalidate>
+<section aria-labelledby="h-mode">
+<h2 id="h-mode">Uplink</h2>
+<label class="radio"><input type="radio" name="MODE" value="ap"><span><strong>Ethernet (access point)</strong><small>Cable to your router; this device provides Wi-Fi.</small></span></label>
+<label class="radio"><input type="radio" name="MODE" value="repeater"><span><strong>Wi-Fi (repeater)</strong><small>Connects to an existing 2.4 GHz network and extends it. Unplug the Ethernet cable first to avoid a network loop.</small></span></label>
+<div id="uplink-fields" hidden>
+<div class="row"><button type="button" id="scan" class="secondary">Scan for networks</button></div>
+<p id="scan-msg" class="msg"></p>
+<table id="scan-table" hidden><thead><tr><th>Network</th><th>Signal</th><th>Ch</th><th>Security</th></tr></thead><tbody></tbody></table>
+<label for="uplink">Network name (SSID)</label>
+<input id="uplink" maxlength="32" autocomplete="off" spellcheck="false">
+<label for="uplink-security">Security</label>
+<select id="uplink-security"><option value="wpa2">WPA2-Personal (AES)</option><option value="mixed">WPA/WPA2-Personal (mixed)</option><option value="open">Open</option></select>
+<label for="uplink-password">Password</label>
+<input id="uplink-password" type="password" maxlength="63" autocomplete="new-password">
+<small id="uplink-password-hint">8–63 ASCII characters. Leave empty to keep the saved password for this network.</small>
+</div>
+</section>
+
+<section aria-labelledby="h-device">
+<h2 id="h-device">Device network</h2>
+<label for="ssid">Network name (SSID)</label>
+<input id="ssid" maxlength="32" autocomplete="off" spellcheck="false">
+<label for="device-security">Security</label>
+<select id="device-security"><option value="wpa2">WPA2-Personal (AES)</option><option value="open">Open (no password)</option></select>
+<div id="device-password-field">
+<label for="password">Password</label>
+<input id="password" type="password" maxlength="63" autocomplete="new-password">
+<small id="password-hint">8–63 ASCII characters.</small>
+</div>
+<label for="channel">Channel</label>
+<select id="channel"></select>
+<small id="channel-hint">2.4 GHz channel for this network.</small>
+<div class="row"><button type="submit" id="apply">Save &amp; apply</button></div>
+<small>Applying restarts Wi-Fi; reconnect if your device disconnects.</small>
+<p id="wifi-msg" class="msg" role="status" aria-live="polite"></p>
+</section>
 </form>
-<footer>Instructions for agents and LLMs: <a href="/llms.txt">/llms.txt</a></footer>
+
+<form id="admin-form" novalidate>
+<section aria-labelledby="h-admin" id="admin">
+<h2 id="h-admin">Administration</h2>
+<p class="hint">These credentials protect this page and Telnet. Telnet is enabled only when an admin password is set and the device network uses WPA2.</p>
+<label for="admin-user">User name</label>
+<input id="admin-user" maxlength="31" autocomplete="username" spellcheck="false">
+<div id="current-field">
+<label for="admin-current">Current password</label>
+<input id="admin-current" type="password" maxlength="63" autocomplete="current-password">
+</div>
+<label for="admin-password">New password</label>
+<input id="admin-password" type="password" maxlength="63" autocomplete="new-password">
+<label for="admin-confirm">Confirm new password</label>
+<input id="admin-confirm" type="password" maxlength="63" autocomplete="new-password">
+<small>8–63 printable ASCII characters, no spaces. Leave both empty to remove the password.</small>
+<div class="row"><button type="submit">Save credentials</button></div>
+<p id="admin-msg" class="msg" role="status" aria-live="polite"></p>
+</section>
+</form>
+
+<section aria-labelledby="h-system">
+<h2 id="h-system">System</h2>
+<div class="row">
+<button type="button" id="reboot" class="secondary">Restart</button>
+<button type="button" id="factory" class="danger">Restore factory defaults</button>
+</div>
+<small>Factory defaults: open network “Extender-&lt;MAC&gt;”, no admin password, Telnet disabled. The reset button does the same when held for more than 4 seconds; a short press restarts.</small>
+<small>Firmware updates are installed over Telnet with <code>ramboot install</code>; see <a href="/agent_api.txt">agent_api.txt</a>.</small>
+<p id="system-msg" class="msg" role="status" aria-live="polite"></p>
+</section>
+
+<footer>Instructions for agents: <a href="/llms.txt">/llms.txt</a> · <a href="/agent_api.txt">/agent_api.txt</a></footer>
 </main>
 <script id="wifi-state" type="application/json"><% CGI_WIFI_STATE(); %></script>
-<script src="/js/wifi.js"></script>
+<script>
+(function () {
+'use strict';
+var $ = function (id) { return document.getElementById(id); };
+var state = {};
+try { state = JSON.parse($('wifi-state').textContent); } catch (e) {}
+var wifiForm = $('wifi-form'), adminForm = $('admin-form');
+
+for (var n = 1; n <= 13; n++) {
+  var o = document.createElement('option'); o.value = String(n); o.textContent = String(n); $('channel').appendChild(o);
+}
+
+function msg(el, text, kind) { el.textContent = text; el.className = 'msg' + (kind ? ' ' + kind : ''); }
+function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+function asciiKey(v) { return /^[\x20-\x7e]{8,63}$/.test(v); }
+function ssidOK(v) { return v.length > 0 && new TextEncoder().encode(v).length <= 32 && !/[\x00-\x1f\x7f]/.test(v); }
+function uptime(s) {
+  var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  return (d ? d + ' d ' : '') + (d || h ? h + ' h ' : '') + m + ' min';
+}
+function securityName(s) { return s === 'OPEN' ? 'open' : s === 'WPAPSKWPA2PSK' ? 'mixed' : 'wpa2'; }
+function isRepeater() { return wifiForm.querySelector('input[name=MODE]:checked').value === 'repeater'; }
+
+function renderStatus() {
+  var rep = state.mode === 'repeater';
+  var built = state.build ? new Date(state.build * 1000).toISOString().slice(0, 10) : '';
+  $('subtitle').textContent = 'Firmware ' + (state.version || '?') + (built ? ' · built ' + built : '');
+  $('st-mode').textContent = rep ? 'Wi-Fi repeater' : 'Ethernet access point';
+  $('st-ssid').textContent = (state.ssid || '–') + (state.device_security === 'open' ? ' (open)' : ' (WPA2)');
+  var up = $('st-uplink');
+  if (!rep) { up.textContent = 'Ethernet'; up.className = ''; }
+  else {
+    var s = (state.uplink_status || '').trim();
+    var connected = /connected/i.test(s) && !/disconnected|not connected/i.test(s);
+    up.textContent = (state.uplink || '–') + ' — ' + (connected ? 'connected' : 'not connected' + (s ? ' (' + s + ')' : '') + '. Check the password and channel.');
+    up.className = connected ? 'ok' : 'bad';
+  }
+  $('st-channel').textContent = state.channel || '–';
+  $('st-admin').textContent = state.admin_password_set ? 'Set (user “' + state.admin_user + '”)' : 'Not set';
+  $('st-telnet').textContent = state.telnet ? 'Enabled (TCP 23)' : 'Disabled — requires an admin password and a WPA2 device network';
+  $('st-uptime').textContent = state.uptime != null ? uptime(state.uptime) : '–';
+  $('admin-banner').hidden = !!state.admin_password_set;
+  $('current-field').hidden = !state.admin_password_set;
+  if (state.busy) msg($('st-apply'), 'Applying settings…');
+  else if (state.error) msg($('st-apply'), 'The last change failed (error ' + state.error + ').', 'bad');
+  else msg($('st-apply'), '');
+}
+
+function fillForms() {
+  var mode = state.mode === 'repeater' ? 'repeater' : 'ap';
+  wifiForm.querySelector('input[name=MODE][value=' + mode + ']').checked = true;
+  $('ssid').value = state.ssid || '';
+  $('device-security').value = state.device_security === 'open' ? 'open' : 'wpa2';
+  $('channel').value = String(state.channel >= 1 && state.channel <= 13 ? state.channel : 6);
+  $('uplink').value = state.uplink && state.uplink !== 'ECOSAPClient' ? state.uplink : '';
+  $('uplink-security').value = securityName(state.security);
+  $('admin-user').value = state.admin_user || 'admin';
+  update();
+}
+
+function update() {
+  var rep = isRepeater();
+  $('uplink-fields').hidden = !rep;
+  var open = $('device-security').value === 'open';
+  $('device-password-field').hidden = open;
+  $('password-hint').textContent = '8–63 ASCII characters.' + (state.device_security === 'wpa2' ? ' Leave empty to keep the current password.' : '');
+  var upOpen = $('uplink-security').value === 'open';
+  $('uplink-password').disabled = upOpen;
+  $('uplink-password-hint').hidden = upOpen;
+  $('channel').disabled = rep;
+  $('channel-hint').textContent = rep ? 'In repeater mode the channel follows the selected network.' : '2.4 GHz channel for this network.';
+}
+wifiForm.addEventListener('change', update);
+
+async function fetchState() {
+  var r = await fetch('/wifi_state.html?t=' + Date.now(), {cache: 'no-store', signal: AbortSignal.timeout(4000)});
+  return r.json();
+}
+async function refresh() {
+  try { state = await fetchState(); renderStatus(); } catch (e) {}
+}
+
+/* Site survey: fixed-width table; columns located from the header line. */
+function decodeSSID(s) {
+  var m = /^0x((?:[0-9A-Fa-f]{2})+)$/.exec(s);
+  if (!m) return s;
+  var bytes = new Uint8Array(m[1].match(/../g).map(function (h) { return parseInt(h, 16); }));
+  try { return new TextDecoder('utf-8', {fatal: true}).decode(bytes); } catch (e) { return s; }
+}
+function parseSurvey(raw) {
+  var lines = raw.split(/\r?\n/), head = -1, i;
+  for (i = 0; i < lines.length; i++) if (/^Ch\s+SSID\s+BSSID/.test(lines[i])) { head = i; break; }
+  if (head < 0) return [];
+  var h = lines[head];
+  var col = {ssid: h.indexOf('SSID'), bssid: h.indexOf('BSSID'), sec: h.indexOf('Security'), sig: h.search(/Si[gn]+al/), mode: h.indexOf('W-Mode')};
+  var best = {};
+  for (i = head + 1; i < lines.length; i++) {
+    var l = lines[i];
+    if (!/^\d+\s/.test(l)) continue;
+    var ssid = decodeSSID(l.slice(col.ssid, col.bssid).trim());
+    if (!ssid) continue; /* hidden network */
+    var net = {ch: parseInt(l.slice(0, col.ssid), 10), ssid: ssid, sec: l.slice(col.sec, col.sig).trim(), signal: parseInt(l.slice(col.sig, col.mode), 10) || 0};
+    if (!best[ssid] || best[ssid].signal < net.signal) best[ssid] = net;
+  }
+  return Object.keys(best).map(function (k) { return best[k]; }).sort(function (a, b) { return b.signal - a.signal; });
+}
+function surveySecurity(s) {
+  if (/^NONE/.test(s)) return {value: 'open', label: 'Open'};
+  if (/WPA3|SAE|8021X|EAP/i.test(s) || !/PSK/.test(s)) return {value: null, label: s};
+  if (/WPA1|TKIP/.test(s)) return {value: 'mixed', label: 'WPA/WPA2'};
+  return {value: 'wpa2', label: 'WPA2'};
+}
+function choose(net) {
+  var sec = surveySecurity(net.sec);
+  $('uplink').value = net.ssid;
+  if (sec.value) $('uplink-security').value = sec.value;
+  $('channel').value = String(net.ch);
+  $('uplink-password').value = '';
+  update();
+  if (!sec.value) return msg($('scan-msg'), '“' + net.ssid + '” uses unsupported security (' + sec.label + ').', 'bad');
+  msg($('scan-msg'), 'Selected “' + net.ssid + '” on channel ' + net.ch + '.' + (sec.value === 'open' ? '' : ' Enter its password below.'));
+  if (sec.value !== 'open') $('uplink-password').focus();
+}
+$('scan').addEventListener('click', async function () {
+  var b = this, tb = $('scan-table').tBodies[0];
+  b.disabled = true; msg($('scan-msg'), 'Scanning… (about 5 seconds)');
+  try {
+    var r = await fetch('/wifi_scan.html?t=' + Date.now(), {cache: 'no-store', signal: AbortSignal.timeout(15000)});
+    var data = await r.json();
+    if (data.error) throw new Error(data.error === 'busy' ? 'The device is busy; try again shortly.' : 'Scan failed.');
+    var list = parseSurvey(data.raw);
+    tb.textContent = '';
+    list.forEach(function (net) {
+      var tr = document.createElement('tr'), sec = surveySecurity(net.sec);
+      var cells = [document.createElement('td'), document.createElement('td'), document.createElement('td'), document.createElement('td')];
+      var bar = document.createElement('span'), fill = document.createElement('i');
+      tr.tabIndex = 0;
+      cells[0].textContent = net.ssid;
+      bar.className = 'bar'; fill.style.width = Math.min(100, net.signal) + '%'; bar.appendChild(fill);
+      cells[1].appendChild(bar); cells[1].appendChild(document.createTextNode(net.signal + '%'));
+      cells[2].textContent = net.ch;
+      cells[3].textContent = sec.label;
+      cells.forEach(function (c) { tr.appendChild(c); });
+      tr.addEventListener('click', function () { choose(net); });
+      tr.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(net); } });
+      tb.appendChild(tr);
+    });
+    $('scan-table').hidden = !list.length;
+    msg($('scan-msg'), list.length ? list.length + ' networks found. Select one.' : 'No networks found.');
+  } catch (e) { msg($('scan-msg'), e.message || 'Scan failed.', 'bad'); }
+  b.disabled = false;
+});
+
+async function post(url, body, timeout) {
+  var r = await fetch(url, {method: 'POST', body: body, signal: AbortSignal.timeout(timeout || 8000)});
+  return (await r.text()).trim();
+}
+
+wifiForm.addEventListener('submit', async function (e) {
+  e.preventDefault();
+  var out = $('wifi-msg'), button = $('apply');
+  var rep = isRepeater();
+  var ssid = $('ssid').value, uplink = $('uplink').value;
+  var open = $('device-security').value === 'open', pw = $('password').value;
+  var upOpen = $('uplink-security').value === 'open', upPw = $('uplink-password').value;
+  if (!ssidOK(ssid) || (rep && !ssidOK(uplink))) return msg(out, 'Network names must be 1–32 bytes without control characters.', 'bad');
+  if (!open && (pw ? !asciiKey(pw) : state.device_security !== 'wpa2')) return msg(out, 'Enter a device network password of 8–63 ASCII characters.', 'bad');
+  if (rep && !upOpen && (upPw ? !asciiKey(upPw) : uplink !== state.uplink)) return msg(out, 'Enter the uplink password (8–63 ASCII characters).', 'bad');
+  if (!window.confirm(rep ? 'Apply repeater mode? Unplug the Ethernet cable first. Wi-Fi will restart.' : 'Apply access point mode? Keep the Ethernet cable connected. Wi-Fi will restart.')) return;
+  var body = new URLSearchParams();
+  body.set('SAVE', '1');
+  body.set('MODE', rep ? 'repeater' : 'ap');
+  body.set('SSID', ssid);
+  body.set('DEVICE_SECURITY', open ? 'open' : 'wpa2');
+  body.set('PASSWORD', open ? '' : pw);
+  body.set('CHANNEL', $('channel').value);
+  if (rep) { body.set('UPLINK_SSID', uplink); body.set('UPLINK_SECURITY', $('uplink-security').value); body.set('UPLINK_PASSWORD', upOpen ? '' : upPw); }
+  button.disabled = true;
+  msg(out, 'Applying… reconnect to “' + ssid + '” if your connection drops.');
+  var expected = (state.revision || 0) + 1;
+  try {
+    var text = await post('/wifi_apply.html', body);
+    if (text !== 'OK') throw new Error(text.replace(/^ERROR:\s*/, '') || 'The device rejected these settings.');
+  } catch (err) {
+    if (err.name !== 'TimeoutError' && err.name !== 'TypeError') { msg(out, err.message, 'bad'); button.disabled = false; return; }
+  }
+  var ok = false;
+  for (var i = 0; i < 25; i++) {
+    await delay(2000);
+    try {
+      var s = await fetchState();
+      if (s.revision >= expected && !s.busy) { state = s; ok = !s.error && s.saved; break; }
+    } catch (err) { /* Wi-Fi restarting */ }
+  }
+  $('password').value = ''; $('uplink-password').value = '';
+  renderStatus(); update();
+  msg(out, ok ? 'Saved and applied.' + (rep ? ' Check the uplink status above.' : '') : 'Could not confirm the change. Reconnect to the device network and reload this page.', ok ? 'good' : 'bad');
+  button.disabled = false;
+});
+
+adminForm.addEventListener('submit', async function (e) {
+  e.preventDefault();
+  var out = $('admin-msg');
+  var user = $('admin-user').value, pw = $('admin-password').value, confirmPw = $('admin-confirm').value;
+  if (!/^[\x21-\x39\x3b-\x7e]{1,31}$/.test(user)) return msg(out, 'User name: 1–31 printable ASCII characters, no spaces or colons.', 'bad');
+  if (pw && !/^[\x21-\x7e]{8,63}$/.test(pw)) return msg(out, 'Password: 8–63 printable ASCII characters, no spaces.', 'bad');
+  if (pw !== confirmPw) return msg(out, 'The new passwords do not match.', 'bad');
+  if (!pw && state.admin_password_set && !window.confirm('Remove the admin password? Anyone on the network will be able to change settings, and Telnet will be disabled.')) return;
+  var body = new URLSearchParams();
+  body.set('USER', user); body.set('PASSWORD', pw); body.set('CONFIRM', confirmPw); body.set('CURRENT', $('admin-current').value);
+  try {
+    var text = await post('/admin_apply.html', body);
+    if (text !== 'OK') throw new Error(text.replace(/^ERROR:\s*/, ''));
+    ['admin-current', 'admin-password', 'admin-confirm'].forEach(function (id) { $(id).value = ''; });
+    msg(out, pw ? 'Saved. Your browser will ask you to sign in with the new credentials.' : 'Saved. The admin password was removed.', 'good');
+    await delay(1500); refresh();
+  } catch (err) { msg(out, err.message || 'Could not save the credentials.', 'bad'); }
+});
+
+async function system(action, question, done) {
+  if (!window.confirm(question)) return;
+  var body = new URLSearchParams(); body.set('ACTION', action);
+  try {
+    var text = await post('/system_apply.html', body, 5000);
+    if (text !== 'OK') throw new Error(text.replace(/^ERROR:\s*/, ''));
+  } catch (err) {
+    if (err.name !== 'TimeoutError' && err.name !== 'TypeError') return msg($('system-msg'), err.message, 'bad');
+  }
+  msg($('system-msg'), done);
+}
+$('reboot').addEventListener('click', function () { system('reboot', 'Restart the device now?', 'Restarting… reload this page in about one minute.'); });
+$('factory').addEventListener('click', function () { system('factory', 'Erase all settings and restore factory defaults? The device restarts with an open network named “Extender-<MAC>” and no admin password.', 'Restoring defaults… reconnect to the “Extender-…” network in about one minute.'); });
+
+renderStatus(); fillForms();
+setInterval(function () { if (!document.hidden) refresh(); }, 15000);
+}());
+</script>
 </body>
 </html>

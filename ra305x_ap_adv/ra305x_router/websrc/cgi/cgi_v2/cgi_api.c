@@ -401,7 +401,8 @@ void CGI_wifi_apply(http_req *req)
     free(changes);
     /* Suppress automatic monitor events: this worker applies without reboot. */
     CFG_commit(CFG_NO_EVENT);
-    wifi_ui_save_pending=save && !strcmp(save,"1");
+    /* Settings are saved unless SAVE=0 (kept for older clients). */
+    wifi_ui_save_pending=!save || !strcmp(save,"1");
     wifi_ui_saved=0;
     wifi_ui_revision++;
     wifi_ui_error = 0;

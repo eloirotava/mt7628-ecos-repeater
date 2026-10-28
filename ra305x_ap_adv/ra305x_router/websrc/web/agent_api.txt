@@ -1,31 +1,51 @@
 # Device API
 
-All paths are relative to the current device origin. HTTP authentication is required where configured; obtain credentials from the owner. No cloud service is used.
+MT7628KN Wi-Fi extender. All paths are relative to the current device origin. When an admin password is set, every page except /llms.txt and /agent_api.txt requires HTTP Basic authentication with the admin user and password (sent unencrypted over HTTP). With no admin password, no authentication is required. No cloud service is used.
+
+Requests that change settings use POST with application/x-www-form-urlencoded fields. Responses are OK when accepted, or ERROR: followed by an explanation. GET requests to these endpoints do not change settings.
 
 ## Read current state
 
-GET /wifi_state.html returns JSON: busy (0 or 1), revision (apply counter), error (0 on success), stage, mode (ap or repeater), ssid, uplink, channel and security (driver authentication name). saved=1 means this apply wrote and verified the configuration in flash. busy=0 means applying has finished; it does not prove that a wireless uplink or Internet connection works.
+GET /wifi_state.html returns JSON:
+- busy (0 or 1), revision (apply counter), error (0 on success; -3 means saving failed), stage, saved (1 when the last apply was written and verified in flash).
+- mode (ap or repeater), ssid (device network), device_security (open or wpa2), channel.
+- uplink (repeater uplink SSID), security (uplink driver authentication name), uplink_status (repeater only: driver connection text, for example "Connected" or "Disconnected").
+- admin_user, admin_password_set (0 or 1), telnet (1 when Telnet logins are accepted).
+- chip, version, build (UNIX time), uptime (seconds).
+
+Passwords are never returned.
+
+## Scan for networks
+
+GET /wifi_scan.html runs a site survey (about 3 seconds) and returns JSON {"error": "", "raw": "<driver table>"}. error is "busy" while settings are being applied. raw is a fixed-width table whose header line starts with "Ch  SSID  BSSID  Security  Siganl(%)W-Mode"; locate columns by the header positions. SSIDs with non-ASCII bytes appear as 0x followed by hex (decode as UTF-8). Empty SSIDs are hidden networks. Security values such as WPA2PSK/AES map to wpa2, WPA1PSKWPA2PSK/TKIPAES to mixed and NONE to open; WPA3/SAE and enterprise networks are unsupported.
 
 ## Apply Wi-Fi settings
 
-POST /wifi_apply.html using application/x-www-form-urlencoded, with these named fields. Do not send CMD or SET fields.
-
-- SAVE: 1 to save persistently, or 0 for a temporary apply. Omission defaults to 0. Persistent saving requires owner authorization.
-- MODE: ap or repeater. Both modes bridge clients; ap disables the wireless uplink. Both use upstream DHCP for the management address and disable the device DHCP server.
+POST /wifi_apply.html with:
+- MODE: ap (Ethernet uplink) or repeater (2.4 GHz Wi-Fi uplink). Both modes bridge clients to the upstream network, take the management address by upstream DHCP and run no DHCP server.
 - SSID: device network name, 1-32 UTF-8 bytes, no control characters.
-- PASSWORD: device WPA2-Personal password, 8-63 printable ASCII characters. Required on every apply; never returned by the API.
-- CHANNEL: integer 1-13, subject to the device's configured regulatory region. In repeater mode, match the existing network channel.
-- UPLINK_SSID: required for repeater, 1-32 UTF-8 bytes.
-- UPLINK_SECURITY: wpa2 (AES), mixed (WPA/WPA2 TKIP/AES), or open. Required for repeater. WPA3-only and enterprise networks are unsupported.
-- UPLINK_PASSWORD: 8-63 printable ASCII characters for secured repeater uplinks; ignored for open networks.
+- DEVICE_SECURITY: open or wpa2.
+- PASSWORD: device WPA2-Personal password, 8-63 printable ASCII characters. With DEVICE_SECURITY=wpa2, an empty PASSWORD keeps the current password (only if the network already uses WPA2). Ignored for open.
+- CHANNEL: 1-13. In repeater mode use the channel of the uplink network.
+- UPLINK_SSID: repeater only, 1-32 UTF-8 bytes.
+- UPLINK_SECURITY: repeater only: wpa2 (AES), mixed (WPA/WPA2 TKIP/AES) or open.
+- UPLINK_PASSWORD: 8-63 printable ASCII characters for secured uplinks. Empty keeps the stored password when UPLINK_SSID is unchanged.
 
-The response is OK when accepted, or ERROR: followed by an explanation. OK is acceptance, not proof of successful connectivity. Poll /wifi_state.html until busy is 0, error is 0 and revision has increased, then verify mode, ssid, channel and uplink. For SAVE=1 also require saved=1. Error -3 means saving failed. Also test traffic from a Wi-Fi client. Invalid fields are rejected before any configuration is changed. GET requests to the apply endpoint do not change settings.
+Settings are saved to flash and applied without a restart. Invalid fields are rejected before anything changes. OK means accepted, not connected: poll /wifi_state.html until busy is 0 and revision has increased, then require error=0 and saved=1 and verify mode, ssid, channel, uplink and, in repeater mode, uplink_status. A wrong uplink password keeps the device network running and shows a disconnected uplink_status. Also test traffic from a Wi-Fi client.
 
-Access Point needs Ethernet to the router. Repeater uses wireless backhaul: disconnect an Ethernet uplink to the same network before applying to avoid a bridge loop. Reconnect to the configured device SSID if Wi-Fi drops. Its DHCP address may change.
+Access point mode needs Ethernet to the router. Repeater mode uses wireless backhaul: disconnect an Ethernet uplink to the same network before applying to avoid a bridge loop. Reconnect to the configured device SSID if Wi-Fi drops; the DHCP address may change.
+
+## Administration
+
+POST /admin_apply.html with USER (1-31 printable ASCII characters, no spaces or colons), PASSWORD and CONFIRM (equal; 8-63 printable ASCII characters without spaces, or both empty to remove the password) and CURRENT (the current admin password; required when one is set). Credentials are saved to flash immediately and apply to HTTP and Telnet. After setting a password, sign in again with the new credentials. Removing the password disables Telnet.
+
+## System
+
+POST /system_apply.html with ACTION=reboot (restart) or ACTION=factory (erase settings, restore factory defaults and restart). The connection drops; the device returns after about one minute. Factory defaults: open network "Extender-<Wi-Fi MAC>", no admin password, Telnet disabled. The reset button does the same when held for more than 4 seconds; a short press restarts.
 
 ## Firmware tests and recovery
 
-Telnet uses TCP 23. Authenticate with credentials supplied by the owner. At CMD>, use help and ramboot status. Use up to leave submenus.
+Telnet uses TCP 23 and accepts logins only when an admin password is set and the device network uses WPA2; otherwise it explains why and refuses. Authenticate with the admin credentials supplied by the owner. The serial console needs no login. At CMD>, use help and ramboot status. Use up to leave submenus.
 
 ramboot check <TFTP-server> <file.img> downloads and validates a complete uImage including its header. ramboot boot <TFTP-server> <file.img> downloads, validates and executes it in RAM, dropping connections. Neither command installs firmware. Use a compatible image and an authorized TFTP server.
 
