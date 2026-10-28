@@ -150,6 +150,13 @@ struct cfgid_str_t cfgid_str_table[]=
     CFG_STR_ENTRY_( SYS_TIME ),
     CFG_STR_ENTRY_( SYS_Login_Flags ),
     CFG_STR_ENTRY_( SYS_Language ),	
+    CFG_STR_ENTRY_( SYS_NTUN_EN ),
+    CFG_STR_ENTRY_( SYS_NTUN_HOST ),
+    CFG_STR_ENTRY_( SYS_NTUN_PORT ),
+    CFG_STR_ENTRY_( SYS_NTUN_SRVKEY ),
+    CFG_STR_ENTRY_( SYS_NTUN_LPORT ),
+    CFG_STR_ENTRY_( SYS_NTUN_KEY ),
+    CFG_STR_ENTRY_( SYS_NTUN_SEED ),
 
     CFG_STR_ENTRY_( UPP_AD_TIME ),
     CFG_STR_ENTRY_( UPP_EN ),

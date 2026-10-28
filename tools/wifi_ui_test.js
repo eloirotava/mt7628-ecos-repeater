@@ -137,10 +137,29 @@ const submit = f => f.els['wifi-form'].listeners.submit({preventDefault() {}});
   f.els['admin-user'].value = 'admin'; f.els['admin-password'].value = 'admin-pass-1'; f.els['admin-confirm'].value = 'admin-pass-1';
   await f.els['admin-form'].listeners.submit({preventDefault() {}}); assert.strictEqual(f.els['admin-msg'].textContent, 'current password is incorrect');
 
+  /* Remote access (ntun) */
+  const K64 = '36220210055efc3e768eeb13aaeb0e3848b8fa2f9129d217a45164e4a4a32749';
+  const withNtun = n => Object.assign({}, base, {admin_password_set: 1, ntun: Object.assign({enabled: 0, host: '', port: 8222, local_port: 80, server_key: '', public_key: 'aa11', state: 'off', status: 'Disabled', status_age: 3}, n)});
+  f = fixture(withNtun({}));
+  assert.strictEqual(f.els['st-ntun'].textContent, 'Off'); assert.strictEqual(f.els['ntun-public'].textContent, 'aa11'); assert.strictEqual(f.els['ntun-port'].value, '8222');
+  const ntun = f.els['ntun-form'].listeners.submit;
+  f.els['ntun-enabled'].checked = true; await ntun({preventDefault() {}}); assert.strictEqual(f.posts().length, 0); assert(f.els['ntun-msg'].textContent.includes('server'));
+  f.els['ntun-host'].value = 'vps.example'; f.els['ntun-key'].value = 'xyz'; await ntun({preventDefault() {}}); assert.strictEqual(f.posts().length, 0);
+  f.els['ntun-key'].value = K64; f.els['ntun-local'].value = '23'; await ntun({preventDefault() {}});
+  p = f.posts()[0]; assert.strictEqual(p.url, '/ntun_apply.html');
+  assert.strictEqual(p.options.body.get('ENABLED'), '1'); assert.strictEqual(p.options.body.get('HOST'), 'vps.example'); assert.strictEqual(p.options.body.get('SERVER_KEY'), K64); assert.strictEqual(p.options.body.get('LOCAL_PORT'), '23'); assert.strictEqual(p.options.body.get('PORT'), '8222');
+  f = fixture(Object.assign(withNtun({}), {admin_password_set: 0}));
+  f.els['ntun-enabled'].checked = true; f.els['ntun-host'].value = 'vps.example'; f.els['ntun-key'].value = K64;
+  await f.els['ntun-form'].listeners.submit({preventDefault() {}}); assert.strictEqual(f.posts().length, 0); assert(f.els['ntun-msg'].textContent.includes('admin password'));
+  f = fixture(withNtun({enabled: 1, host: 'vps.example', server_key: K64, state: 'connected', status: 'Connected to vps.example:8222', local_port: 23}));
+  assert.strictEqual(f.els['st-ntun'].className, 'ok'); assert(f.els['ntun-enabled'].checked); assert.strictEqual(f.els['ntun-local'].value, '23');
+  f = fixture(withNtun({enabled: 1, state: 'error', status: 'The server closed the handshake: register this device\'s public key on the server'}));
+  assert.strictEqual(f.els['st-ntun'].className, 'bad'); assert(f.els['st-ntun'].textContent.includes('register'));
+
   /* System actions need confirmation */
   f = fixture(base, {confirm: false}); await f.els.factory.listeners.click(); assert.strictEqual(f.posts().length, 0);
   f = fixture(base); await f.els.factory.listeners.click(); assert.strictEqual(f.posts()[0].options.body.get('ACTION'), 'factory');
   f = fixture(base); await f.els.reboot.listeners.click(); assert.strictEqual(f.posts()[0].options.body.get('ACTION'), 'reboot');
 
-  console.log('PASS: status rendering, scan parsing and selection, Wi-Fi and admin validation, POST fields, system actions');
+  console.log('PASS: status rendering, scan parsing and selection, Wi-Fi, admin and remote access validation, POST fields, system actions');
 })().catch(e => { console.error(e); process.exitCode = 1; });

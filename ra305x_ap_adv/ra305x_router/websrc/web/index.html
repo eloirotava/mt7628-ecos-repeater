@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>MT7628KN Wi-Fi Extender</title>
-<link rel="icon" href="data:,">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%231f5fbf'/><rect x='22' y='9' width='5' height='11' rx='2.5' fill='%23fff'/><rect x='37' y='9' width='5' height='11' rx='2.5' fill='%23fff'/><path d='M14 34a25 25 0 0 1 36 0M20.5 41a16 16 0 0 1 23 0M27 48a7 7 0 0 1 10 0' fill='none' stroke='%23fff' stroke-width='4.5' stroke-linecap='round'/><circle cx='32' cy='54' r='3.2' fill='%23fff'/></svg>">
 <link rel="describedby" href="/llms.txt">
 <style>
 :root{--bg:#f4f5f7;--card:#fff;--fg:#1d2228;--muted:#5d6670;--line:#d9dde2;--accent:#1f5fbf;--accent-fg:#fff;--warn-bg:#fff4d6;--warn-line:#c99a1e;--bad:#b3261e;--good:#1e7a46;font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:light}
@@ -13,6 +13,7 @@
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg)}
 main{max-width:640px;margin:0 auto;padding:20px 16px 40px}
+header{display:flex;gap:12px;align-items:center}.logo{width:44px;height:44px;flex:none}
 header h1{font-size:1.4rem;margin:0}
 header p{margin:2px 0 0;color:var(--muted);font-size:.9rem}
 section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin:16px 0}
@@ -39,6 +40,8 @@ th{color:var(--muted);font-weight:600}
 tbody tr{cursor:pointer}tbody tr:hover,tbody tr:focus{background:var(--bg)}
 .bar{display:inline-block;width:44px;height:6px;border-radius:3px;background:var(--line);vertical-align:middle;margin-right:6px;overflow:hidden}
 .bar i{display:block;height:100%;background:var(--accent)}
+.key{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.85rem;overflow-wrap:anywhere;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin:4px 0 0}
+.check{display:flex;gap:10px;align-items:center;font-weight:600;margin:12px 0}.check input{width:auto}
 footer{color:var(--muted);font-size:.85rem;text-align:center;margin-top:24px}
 a{color:var(--accent)}
 [hidden]{display:none!important}
@@ -47,8 +50,9 @@ a{color:var(--accent)}
 <body>
 <main>
 <header>
-<h1>MT7628KN Wi-Fi Extender</h1>
-<p id="subtitle">Firmware information unavailable</p>
+<svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width='64' height='64' rx='14' fill='#1f5fbf'/><rect x='22' y='9' width='5' height='11' rx='2.5' fill='#fff'/><rect x='37' y='9' width='5' height='11' rx='2.5' fill='#fff'/><path d='M14 34a25 25 0 0 1 36 0M20.5 41a16 16 0 0 1 23 0M27 48a7 7 0 0 1 10 0' fill='none' stroke='#fff' stroke-width='4.5' stroke-linecap='round'/><circle cx='32' cy='54' r='3.2' fill='#fff'/></svg>
+<div><h1>MT7628KN Wi-Fi Extender</h1>
+<p id="subtitle">Firmware information unavailable</p></div>
 </header>
 
 <p id="admin-banner" class="banner" hidden>No admin password is set. Anyone connected to this device can change its settings. Set one under <a href="#admin">Administration</a>.</p>
@@ -62,6 +66,7 @@ a{color:var(--accent)}
 <dt>Channel</dt><dd id="st-channel">–</dd>
 <dt>Admin password</dt><dd id="st-admin">–</dd>
 <dt>Telnet</dt><dd id="st-telnet">–</dd>
+<dt>Remote access</dt><dd id="st-ntun">–</dd>
 <dt>Uptime</dt><dd id="st-uptime">–</dd>
 </dl>
 <p id="st-apply" class="msg"></p>
@@ -126,6 +131,28 @@ a{color:var(--accent)}
 </section>
 </form>
 
+<form id="ntun-form" novalidate>
+<section aria-labelledby="h-ntun" id="remote">
+<h2 id="h-ntun">Remote access (ntun)</h2>
+<p class="hint">Encrypted reverse tunnel (Noise IK) to your ntun server: on the server, 127.0.0.1:&lt;port assigned to this device&gt; reaches this device's web page or Telnet. Requires an admin password. Saving restarts the device.</p>
+<label for="ntun-public">This device's public key</label>
+<p id="ntun-public" class="key">–</p>
+<div class="row"><button type="button" id="ntun-copy" class="secondary">Copy public key</button></div>
+<small>Register this key on the server. It is generated on the device, survives factory resets, and its private half never leaves the device.</small>
+<label class="check"><input type="checkbox" id="ntun-enabled"> Enable remote access</label>
+<label for="ntun-host">Server</label>
+<input id="ntun-host" maxlength="63" autocomplete="off" spellcheck="false" placeholder="host name or IPv4 address">
+<label for="ntun-port">Server port</label>
+<input id="ntun-port" inputmode="numeric" maxlength="5">
+<label for="ntun-key">Server public key</label>
+<input id="ntun-key" maxlength="64" autocomplete="off" spellcheck="false" placeholder="64 hexadecimal characters">
+<label for="ntun-local">Service reachable through the tunnel</label>
+<select id="ntun-local"><option value="80">Web page (TCP 80)</option><option value="23">Telnet (TCP 23)</option></select>
+<div class="row"><button type="submit">Save &amp; restart</button></div>
+<p id="ntun-msg" class="msg" role="status" aria-live="polite"></p>
+</section>
+</form>
+
 <section aria-labelledby="h-system">
 <h2 id="h-system">System</h2>
 <div class="row">
@@ -181,6 +208,11 @@ function renderStatus() {
   $('st-admin').textContent = state.admin_password_set ? 'Set (user “' + state.admin_user + '”)' : 'Not set';
   $('st-telnet').textContent = state.telnet ? 'Enabled (TCP 23)' : 'Disabled — requires an admin password and a WPA2 device network';
   $('st-uptime').textContent = state.uptime != null ? uptime(state.uptime) : '–';
+  var nt = state.ntun || {};
+  var ntEl = $('st-ntun');
+  ntEl.textContent = !nt.enabled ? 'Off' : (nt.status || nt.state || '–');
+  ntEl.className = !nt.enabled ? '' : nt.state === 'connected' ? 'ok' : nt.state === 'error' ? 'bad' : '';
+  $('ntun-public').textContent = nt.public_key || 'Generating… reload in a few seconds.';
   $('admin-banner').hidden = !!state.admin_password_set;
   $('current-field').hidden = !state.admin_password_set;
   if (state.busy) msg($('st-apply'), 'Applying settings…');
@@ -197,6 +229,12 @@ function fillForms() {
   $('uplink').value = state.uplink && state.uplink !== 'ECOSAPClient' ? state.uplink : '';
   $('uplink-security').value = securityName(state.security);
   $('admin-user').value = state.admin_user || 'admin';
+  var nt = state.ntun || {};
+  $('ntun-enabled').checked = !!nt.enabled;
+  $('ntun-host').value = nt.host || '';
+  $('ntun-port').value = String(nt.port || 8222);
+  $('ntun-key').value = nt.server_key || '';
+  $('ntun-local').value = nt.local_port === 23 ? '23' : '80';
   update();
 }
 
@@ -357,6 +395,34 @@ adminForm.addEventListener('submit', async function (e) {
     msg(out, pw ? 'Saved. Your browser will ask you to sign in with the new credentials.' : 'Saved. The admin password was removed.', 'good');
     await delay(1500); refresh();
   } catch (err) { msg(out, err.message || 'Could not save the credentials.', 'bad'); }
+});
+
+$('ntun-copy').addEventListener('click', async function () {
+  var key = (state.ntun || {}).public_key, out = $('ntun-msg');
+  if (!key) return msg(out, 'The device key is not ready yet.', 'bad');
+  try { await navigator.clipboard.writeText(key); msg(out, 'Public key copied.', 'good'); }
+  catch (e) { msg(out, 'Copy failed; select the key above and copy it manually.', 'bad'); }
+});
+
+$('ntun-form').addEventListener('submit', async function (e) {
+  e.preventDefault();
+  var out = $('ntun-msg');
+  var en = $('ntun-enabled').checked, host = $('ntun-host').value.trim(), port = $('ntun-port').value.trim(), key = $('ntun-key').value.trim();
+  if (host && !/^[A-Za-z0-9.-]{1,63}$/.test(host)) return msg(out, 'Server: a host name or IPv4 address (letters, numbers, dots and hyphens).', 'bad');
+  if (!/^\d{1,5}$/.test(port) || +port < 1 || +port > 65535) return msg(out, 'Server port: 1–65535.', 'bad');
+  if (key && !/^[0-9a-fA-F]{64}$/.test(key)) return msg(out, 'Server public key: 64 hexadecimal characters.', 'bad');
+  if (en && (!host || !key)) return msg(out, 'Enter the server and its public key to enable remote access.', 'bad');
+  if (en && !state.admin_password_set) return msg(out, 'Set an admin password first (Administration).', 'bad');
+  if (!window.confirm('Save remote access settings and restart the device?')) return;
+  var body = new URLSearchParams();
+  body.set('ENABLED', en ? '1' : '0'); body.set('HOST', host); body.set('PORT', port); body.set('SERVER_KEY', key); body.set('LOCAL_PORT', $('ntun-local').value);
+  try {
+    var text = await post('/ntun_apply.html', body, 5000);
+    if (text !== 'OK') throw new Error(text.replace(/^ERROR:\s*/, ''));
+  } catch (err) {
+    if (err.name !== 'TimeoutError' && err.name !== 'TypeError') return msg(out, err.message, 'bad');
+  }
+  msg(out, 'Saved. Restarting… reload this page in about one minute.', 'good');
 });
 
 async function system(action, question, done) {

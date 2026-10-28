@@ -12,6 +12,7 @@ GET /wifi_state.html returns JSON:
 - uplink (repeater uplink SSID), security (uplink driver authentication name), uplink_status (repeater only: driver connection text, for example "Connected" or "Disconnected").
 - admin_user, admin_password_set (0 or 1), telnet (1 when Telnet logins are accepted).
 - chip, version, build (UNIX time), uptime (seconds).
+- ntun: enabled, host, port, local_port, server_key (public), public_key (this device's ntun public key, 64 hex; empty for a few seconds after boot), state (off, starting, connecting, connected or error), status (text) and status_age (seconds).
 
 Passwords are never returned.
 
@@ -42,6 +43,10 @@ POST /admin_apply.html with USER (1-31 printable ASCII characters, no spaces or 
 ## System
 
 POST /system_apply.html with ACTION=reboot (restart) or ACTION=factory (erase settings, restore factory defaults and restart). The connection drops; the device returns after about one minute. Factory defaults: open network "Extender-<Wi-Fi MAC>", no admin password, Telnet disabled. The reset button does the same when held for more than 4 seconds; a short press restarts.
+
+## Remote access (ntun)
+
+POST /ntun_apply.html with ENABLED (0 or 1), HOST (host name or IPv4 address, letters, numbers, dots and hyphens, up to 63), PORT (1-65535; the ntun default is 8222), SERVER_KEY (the server's X25519 public key, 64 hexadecimal characters) and LOCAL_PORT (80 for the web page or 23 for Telnet). Enabling requires HOST, SERVER_KEY and an admin password. Settings are saved and the device restarts at once; the tunnel starts about one minute later. The server must know this device's public key (ntun.public_key in the state); otherwise ntun.status reports that the server closed the handshake. The device key is created by the firmware and is never exported or replaced through the API.
 
 ## Firmware tests and recovery
 

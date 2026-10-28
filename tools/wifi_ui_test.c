@@ -27,6 +27,13 @@ const unsigned int sys_build_time=1700000000;
 static long long cyg_current_time(void) { return 12345; }
 int CFG_telnet_allowed(void) { return 0; }
 int HTTPD_reconf;
+#define MON_CMD_REBOOT 2
+static int reboots;
+static void mon_snd_cmd(int cmd) { assert(cmd==MON_CMD_REBOOT); reboots++; }
+int ntun_ecos_state(void) { return 3; }
+const char *ntun_ecos_status(void) { return "Connected to vps.example:8222"; }
+unsigned ntun_ecos_status_age(void) { return 7; }
+int ntun_ecos_public_key(char hex[65]) { strcpy(hex,"aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11"); return 0; }
 /* IMPLEMENTATION */
 static int wifi_ui_restart(void) { return 0; }
 static int uplink_up=1;
@@ -37,7 +44,7 @@ static void setup(const char *mode) {
  const char *v[]={mode,"Test AP","test-pass-123","6","Test uplink","uplink-pass-123","wpa2",NULL};
  for(i=0;i<12;i++){names[i]=i<8?n[i]:NULL;values[i]=i<8?v[i]:NULL;}
  for(i=0;i<64;i++)strcpy(cfg[i],"original");
- sets=0;fail_at=-1;output[0]=0;wifi_ui_busy=0;save_fail=0;HTTPD_reconf=0;
+ sets=0;fail_at=-1;output[0]=0;wifi_ui_busy=0;save_fail=0;HTTPD_reconf=0;reboots=0;
 }
 static void rejected(void) { CGI_wifi_apply(&post);assert(!strncmp(output,"ERROR:",6));assert(sets==0); }
 int main(void) {
@@ -85,6 +92,24 @@ int main(void) {
  ADMIN("admin","new-pass-1","new-pass-1","");strcpy(cfg[CFG_SYS_ADMPASS],"");save_fail=1;CGI_admin_apply(&post);assert(strstr(output,"saving"));
  ADMIN("admin","new-pass-1","new-pass-1","");CGI_admin_apply(&get);assert(strstr(output,"POST required"));assert(sets==0);
  setup("repeater");strcpy(cfg[CFG_WLN_ApCliEnable],"1");uplink_up=0;CGI_wifi_state(&post);assert(strstr(output,"\"uplink_status\":\"disconnected\""));uplink_up=1;
+ /* Remote access (ntun) */
+#define K64 "36220210055efc3e768eeb13aaeb0e3848b8fa2f9129d217a45164e4a4a32749"
+#define NTUN(e,h,p,k,l) do{setup("ap");names[0]="ENABLED";values[0]=(e);names[1]="HOST";values[1]=(h);names[2]="PORT";values[2]=(p);names[3]="SERVER_KEY";values[3]=(k);names[4]="LOCAL_PORT";values[4]=(l);for(i=5;i<12;i++)names[i]=NULL;}while(0)
+ NTUN("1","vps.example","8222",K64,"80");strcpy(cfg[CFG_SYS_ADMPASS],"admin-pass-1");CGI_ntun_apply(&post);assert(!strcmp(output,"OK"));assert(reboots==1);assert(!strcmp(cfg[CFG_SYS_NTUN_EN],"1"));assert(!strcmp(cfg[CFG_SYS_NTUN_HOST],"vps.example"));assert(!strcmp(cfg[CFG_SYS_NTUN_SRVKEY],K64));assert(!strcmp(cfg[CFG_SYS_NTUN_LPORT],"80"));
+ NTUN("1","vps.example","8222",K64,"80");strcpy(cfg[CFG_SYS_ADMPASS],"");CGI_ntun_apply(&post);assert(strstr(output,"admin password"));assert(sets==0&&reboots==0);
+ NTUN("1","","8222",K64,"80");strcpy(cfg[CFG_SYS_ADMPASS],"x");CGI_ntun_apply(&post);assert(strstr(output,"required"));assert(sets==0);
+ NTUN("1","vps.example","8222","",  "80");strcpy(cfg[CFG_SYS_ADMPASS],"x");CGI_ntun_apply(&post);assert(strstr(output,"required"));assert(sets==0);
+ NTUN("0","","8222","","23");strcpy(cfg[CFG_SYS_ADMPASS],"");CGI_ntun_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[CFG_SYS_NTUN_EN],"0"));assert(!strcmp(cfg[CFG_SYS_NTUN_LPORT],"23"));
+ NTUN("1","bad host","8222",K64,"80");CGI_ntun_apply(&post);assert(strstr(output,"ERROR"));assert(sets==0);
+ NTUN("1","vps.example","0",K64,"80");CGI_ntun_apply(&post);assert(strstr(output,"port"));assert(sets==0);
+ NTUN("1","vps.example","70000",K64,"80");CGI_ntun_apply(&post);assert(strstr(output,"port"));assert(sets==0);
+ NTUN("1","vps.example","8222","abc","80");CGI_ntun_apply(&post);assert(strstr(output,"64 hexadecimal"));assert(sets==0);
+ NTUN("1","vps.example","8222",K64,"22");CGI_ntun_apply(&post);assert(strstr(output,"LOCAL_PORT"));assert(sets==0);
+ NTUN("2","vps.example","8222",K64,"80");CGI_ntun_apply(&post);assert(strstr(output,"ENABLED"));assert(sets==0);
+ NTUN("1","vps.example","8222",K64,"80");strcpy(cfg[CFG_SYS_ADMPASS],"x");save_fail=1;CGI_ntun_apply(&post);assert(strstr(output,"saving"));assert(reboots==0);
+ NTUN("1","vps.example","8222",K64,"80");CGI_ntun_apply(&get);assert(strstr(output,"POST required"));assert(sets==0);
+ setup("ap");strcpy(cfg[CFG_SYS_NTUN_EN],"1");strcpy(cfg[CFG_SYS_NTUN_PORT],"8222");CGI_wifi_state(&post);assert(strstr(output,"\"ntun\":{\"enabled\":1"));assert(strstr(output,"\"state\":\"connected\""));assert(strstr(output,"\"public_key\":\"aa11"));
+ puts("PASS: remote access (ntun) validation, admin requirement, save+restart and state");
  puts("PASS: admin credentials validation, current-password check and save");
  puts("PASS: server validation, AP/repeater mapping, open/mixed security, rollback and JSON escaping");
  return 0;

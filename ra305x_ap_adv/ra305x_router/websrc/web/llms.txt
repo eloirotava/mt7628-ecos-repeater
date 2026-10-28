@@ -37,6 +37,15 @@ Do these in order. After each POST, check the response is OK; for Wi-Fi changes 
 
 Telnet (TCP 23, same admin credentials) becomes available only after steps 2 and 4. It is for diagnostics and firmware installation; see /agent_api.txt.
 
+## Optional: remote access (ntun)
+
+The device can keep an encrypted reverse tunnel (ntun, Noise IK; https://github.com/eloirotava/ntun) to an ntun server, so its web page or Telnet is reachable from 127.0.0.1 on that server. Off by default; needs an admin password.
+
+1. GET /wifi_state.html and read ntun.public_key (the device generates its key at first boot; it survives factory resets and the private half never leaves the device).
+2. Register that public key on the ntun server (server-side step, done by the owner).
+3. POST /ntun_apply.html ENABLED=1&HOST=<server>&PORT=<port, ntun default 8222>&SERVER_KEY=<server public key, 64 hex>&LOCAL_PORT=<80 for the web page or 23 for Telnet>. The device saves and restarts.
+4. After about one minute, GET /wifi_state.html: ntun.state "connected" means the tunnel is up; ntun.status explains errors (for example an unregistered device key).
+
 ## Recovery
 
 - Lost credentials or a broken configuration: hold the reset button for more than 4 seconds, then start again from factory defaults.
