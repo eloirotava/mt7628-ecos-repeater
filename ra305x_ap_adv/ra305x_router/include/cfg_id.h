@@ -236,6 +236,10 @@
 #define CFG_SYS_NET2_INTERNET	CFG_SYS_(86,CFG_TYPE_STR)
 #define CFG_SYS_NET3_INTERNET	CFG_SYS_(87,CFG_TYPE_STR)
 #define CFG_SYS_NET4_INTERNET	CFG_SYS_(88,CFG_TYPE_STR)
+/* routed network Internet path: wan or wg (through the WireGuard tunnel) */
+#define CFG_SYS_NET2_VIA	CFG_SYS_(89,CFG_TYPE_STR)
+#define CFG_SYS_NET3_VIA	CFG_SYS_(90,CFG_TYPE_STR)
+#define CFG_SYS_NET4_VIA	CFG_SYS_(91,CFG_TYPE_STR)
 /* WireGuard client (wg/wg_ecos.c) */
 #define CFG_SYS_WG_EN	CFG_SYS_(50,CFG_TYPE_STR)
 #define CFG_SYS_WG_KEY	CFG_SYS_(51,CFG_TYPE_STR)

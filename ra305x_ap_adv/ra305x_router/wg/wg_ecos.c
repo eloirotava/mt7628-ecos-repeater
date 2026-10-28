@@ -47,6 +47,7 @@ static unsigned keepalive;
 static long sess_time = -1, init_time = -1, last_tx;
 static uint64_t last_tai_ns;
 static long clock_base_unix, clock_base_up; /* unix = base_unix + (uptime - base_up) */
+static int if_ready; /* wg0 attached and addressed */
 
 static cyg_handle_t rx_handle, tx_handle;
 static cyg_thread rx_obj, tx_obj;
@@ -336,10 +337,13 @@ static void boot_thread(cyg_addrword_t arg)
 	memset(psk, 0, sizeof psk);
 
 	/* interface first, so the address and route exist even before the peer answers */
-	cyg_mutex_init(&lock);
-	cyg_semaphore_init(&tx_wake, 0);
-	wg_if_attach(&tx_wake);
-	if (!netif_alias_cfg("wg0", &addr)) { set_status(WG_ERROR, "Could not configure wg0"); return; }
+	if (!if_ready) {
+		cyg_mutex_init(&lock);
+		cyg_semaphore_init(&tx_wake, 0);
+		wg_if_attach(&tx_wake);
+		if (!netif_alias_cfg("wg0", &addr)) { set_status(WG_ERROR, "Could not configure wg0"); return; }
+		if_ready = 1;
+	}
 
 	set_status(WG_CLOCK, "Waiting for network time (SNTP) and the endpoint address");
 	for (tries = 0; ; tries++) {
@@ -366,8 +370,31 @@ static cyg_handle_t boot_handle;
 static cyg_thread boot_obj;
 static char boot_stack[12288];
 
+/* wg0 is created at start-up (not after the ~5 s entropy collection) so
+ * that NAT and firewall rules naming wg0 (routed networks sent through the
+ * tunnel) find the interface when they are loaded. */
+static void early_interface(void)
+{
+	char val[64];
+	struct ip_set addr;
+	val[0] = 0;
+	CFG_get_str(CFG_SYS_WG_EN, val);
+	if (atoi(val) != 1) return;
+	val[0] = 0;
+	CFG_get_str(CFG_SYS_ADMPASS, val);
+	if (!val[0]) return;
+	val[0] = 0;
+	CFG_get_str(CFG_SYS_WG_ADDR, val);
+	if (parse_cidr(val, &addr)) return;
+	cyg_mutex_init(&lock);
+	cyg_semaphore_init(&tx_wake, 0);
+	wg_if_attach(&tx_wake);
+	if (netif_alias_cfg("wg0", &addr)) if_ready = 1;
+}
+
 void wg_ecos_start(void)
 {
+	early_interface();
 	cyg_thread_create(14, boot_thread, 0, "wg boot", boot_stack, sizeof boot_stack, &boot_handle, &boot_obj);
 	cyg_thread_resume(boot_handle);
 }

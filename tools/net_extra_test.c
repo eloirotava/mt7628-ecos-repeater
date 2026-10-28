@@ -8,7 +8,7 @@
 #define diag_printf printf
 
 enum { CFG_SYS_NET2_IP = 1, CFG_SYS_NET3_IP, CFG_SYS_NET4_IP, CFG_SYS_NET2_REACH, CFG_SYS_NET3_REACH, CFG_SYS_NET4_REACH,
-       CFG_SYS_NET2_INTERNET, CFG_SYS_NET3_INTERNET, CFG_SYS_NET4_INTERNET, CFG_WLN_BssidNum, CFG_SYS_WG_ADDR, CFG_MAX };
+       CFG_SYS_NET2_INTERNET, CFG_SYS_NET3_INTERNET, CFG_SYS_NET4_INTERNET, CFG_SYS_NET2_VIA, CFG_SYS_NET3_VIA, CFG_SYS_NET4_VIA, CFG_WLN_BssidNum, CFG_SYS_WG_ADDR, CFG_MAX };
 static char cfg[CFG_MAX][64];
 static int CFG_get_str(int id, char *val) { strcpy(val, cfg[id]); return 0; }
 struct ip_set { unsigned long ip, netmask; };
@@ -89,6 +89,20 @@ int main(void)
 	strcpy(cfg[CFG_SYS_NET2_REACH], "lanx,wgx");
 	net_extra_fw_rules(collect);
 	assert(find("block in quick on ra1 from any to 10.0.1.0/24\n") >= 0 && find("block in quick on ra1 from any to 10.8.0.0/24\n") >= 0);
-	puts("PASS: routed networks, address parsing and isolation rules (reach list, Internet, device access)");
+	/* Internet through the WireGuard tunnel: local rules first, then route-to wg0 */
+	nrules = 0;
+	net_extra_fw_flushed();
+	strcpy(cfg[CFG_SYS_NET2_REACH], "lan");
+	strcpy(cfg[CFG_SYS_NET2_VIA], "wg");
+	strcpy(cfg[CFG_SYS_NET3_VIA], "wg"); /* no Internet: no route-to */
+	net_extra_fw_rules(collect);
+	assert(net_extra_via_wg(2) && net_extra_via_wg(3) && !net_extra_via_wg(4));
+	{
+		int pass_lan = find("pass in quick on ra1 from any to 10.0.1.0/24\n"), to_wg = find("pass in quick on ra1 to wg0 from any to any\n");
+		int block_dev = find("block in quick on ra1 from any to 10.0.2.1/32\n"), block_n3 = find("block in quick on ra1 from any to 10.0.3.0/24\n");
+		assert(pass_lan >= 0 && to_wg > pass_lan && block_dev >= 0 && block_dev < to_wg && block_n3 < to_wg);
+	}
+	assert(find("pass in quick on ra2 to wg0 from any to any\n") < 0);
+	puts("PASS: routed networks, address parsing and isolation rules (reach list, Internet, device access, via WireGuard)");
 	return 0;
 }

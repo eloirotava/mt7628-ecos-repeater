@@ -24,6 +24,17 @@ extern void FW_setrule(char *cmdbuf);
 static const int ip_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_IP, CFG_SYS_NET3_IP, CFG_SYS_NET4_IP };
 static const int reach_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_REACH, CFG_SYS_NET3_REACH, CFG_SYS_NET4_REACH };
 static const int internet_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_INTERNET, CFG_SYS_NET3_INTERNET, CFG_SYS_NET4_INTERNET };
+static const int via_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_VIA, CFG_SYS_NET3_VIA, CFG_SYS_NET4_VIA };
+
+/* Network n (2..4) sends its Internet traffic through wg0. */
+int net_extra_via_wg(int n)
+{
+	char val[16];
+	if (n < 2 || n > 1 + NET_EXTRA_MAX) return 0;
+	val[0] = 0;
+	CFG_get_str(via_ids[n - 2], val);
+	return !strcmp(val, "wg");
+}
 
 /* "a.b.c.d/n" -> address and mask (network order); 0 if valid */
 int net_extra_parse(const char *s, unsigned long *ip, unsigned long *mask)
@@ -87,8 +98,9 @@ void net_extra_apply(void)
 		set.ip = ip;
 		set.netmask = mask;
 		if (!netif_alias_cfg(names[i], &set)) diag_printf("net: %s address failed\n", names[i]);
-		/* dns 0: offer the upstream DNS current at each reply (reachable through NAT) */
-		DHCPS_net_start(names[i], ip, mask, 0);
+		/* dns 0: offer the upstream DNS current at each reply (reachable through
+		 * NAT); through the tunnel the home router's DNS is not reachable */
+		DHCPS_net_start(names[i], ip, mask, net_extra_via_wg(names[i][2] - '0' + 1) ? inet_addr("1.1.1.1") : 0);
 	}
 	/* Wi-Fi is up: isolation rules may be loaded now (no-op if the
 	 * firewall already has them); later firewall reloads add them again. */
@@ -140,7 +152,7 @@ void net_extra_fw_rules(void (*set)(char *))
 {
 	char names[NET_EXTRA_MAX][8], reach[NET_EXTRA_MAX][64], val[64], buf[160];
 	unsigned long ip[NET_EXTRA_MAX], mask[NET_EXTRA_MAX], wg_ip = 0, wg_mask = 0;
-	int internet[NET_EXTRA_MAX], num[NET_EXTRA_MAX];
+	int internet[NET_EXTRA_MAX], num[NET_EXTRA_MAX], via_wg[NET_EXTRA_MAX];
 	int i, j, count;
 	const unsigned long rescue = inet_addr("192.168.11.1");
 
@@ -159,6 +171,7 @@ void net_extra_fw_rules(void (*set)(char *))
 		val[0] = 0;
 		CFG_get_str(internet_ids[num[i] - 2], val);
 		internet[i] = strcmp(val, "0") != 0;
+		via_wg[i] = net_extra_via_wg(num[i]);
 	}
 	if (count) diag_printf("net: isolation rules for %d routed network(s)\n", count);
 	for (i = 0; i < count; i++) {
@@ -183,6 +196,20 @@ void net_extra_fw_rules(void (*set)(char *))
 		}
 		if (wg_ip && !has(reach[i], "wg"))
 			rule(set, "block in quick on %s from any to %s/%d\n", x, wg_ip & wg_mask, prefix(wg_mask));
+		if (internet[i] && via_wg[i]) {
+			/* allowed local destinations stay local; everything else is
+			 * routed into the WireGuard tunnel (NAT to the wg0 address) */
+			if (has(reach[i], "device")) rule(set, "pass in quick on %s from any to %s/%d\n", x, ip[i], 32);
+			if (has(reach[i], "lan")) rule(set, "pass in quick on %s from any to %s/%d\n", x, SYS_lan_ip & SYS_lan_mask, prefix(SYS_lan_mask));
+			for (j = 0; j < count; j++) {
+				char key[8];
+				snprintf(key, sizeof key, "net%d", num[j]);
+				if (j != i && has(reach[i], key))
+					rule(set, "pass in quick on %s from any to %s/%d\n", x, ip[j] & mask[j], prefix(mask[j]));
+			}
+			snprintf(buf, sizeof buf, "pass in quick on %s to wg0 from any to any\n", x);
+			set(buf);
+		}
 		if (!internet[i]) {
 			/* only the allowed local destinations, nothing beyond */
 			if (has(reach[i], "device")) rule(set, "pass in quick on %s from any to %s/%d\n", x, ip[i], 32);

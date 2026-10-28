@@ -706,6 +706,8 @@ static void napt_init(void)
 			extern int net_extra_ifnames(char names[][8], int max);
 			char names[3][8];
 			int k, count = net_extra_ifnames(names, 3);
+			extern int net_extra_via_wg(int n);
+			extern struct ifnet *ifunit(const char *name);
 			for (k = 0; k < count; k++) {
 				sprintf(naptcmd, "map %s fromif %s 0/0 -> 0/32 portmap tcp/udp auto\n",
 					primary_wan_ip_set[j].ifname, names[k]);
@@ -713,6 +715,14 @@ static void napt_init(void)
 				sprintf(naptcmd, "map %s fromif %s 0/0 -> 0/32 icmpidmap icmp 45000:65535\n",
 					primary_wan_ip_set[j].ifname, names[k]);
 				NAT_setrule(naptcmd);
+				/* networks sent through the tunnel: NAT to the wg0 address,
+				 * the only source the WireGuard server accepts from us */
+				if (net_extra_via_wg(names[k][2] - '0' + 1) && ifunit("wg0")) {
+					sprintf(naptcmd, "map wg0 fromif %s 0/0 -> 0/32 portmap tcp/udp auto\n", names[k]);
+					NAT_setrule(naptcmd);
+					sprintf(naptcmd, "map wg0 fromif %s 0/0 -> 0/32 icmpidmap icmp 45000:65535\n", names[k]);
+					NAT_setrule(naptcmd);
+				}
 			}
 		}
 

@@ -7241,6 +7241,7 @@ static const int net_key_ids[4] = { CFG_WLN_WPAPSK1, CFG_WLN_WPAPSK2, CFG_WLN_WP
 static const int net_ip_ids[3] = { CFG_SYS_NET2_IP, CFG_SYS_NET3_IP, CFG_SYS_NET4_IP };
 static const int net_reach_ids[3] = { CFG_SYS_NET2_REACH, CFG_SYS_NET3_REACH, CFG_SYS_NET4_REACH };
 static const int net_inet_ids[3] = { CFG_SYS_NET2_INTERNET, CFG_SYS_NET3_INTERNET, CFG_SYS_NET4_INTERNET };
+static const int net_via_ids[3] = { CFG_SYS_NET2_VIA, CFG_SYS_NET3_VIA, CFG_SYS_NET4_VIA };
 
 /* item idx of a ';' list into out ("" when missing) */
 static void net_list_get(char *out, const char *list, int idx)
@@ -7313,6 +7314,8 @@ static void net_state(http_req *req)
             WEB_printf(req, ",\"reach\":"); wifi_ui_json(req, val);
             val[0] = 0; CFG_get_str(net_inet_ids[n - 1], val);
             WEB_printf(req, ",\"internet\":%d", strcmp(val, "0") != 0);
+            val[0] = 0; CFG_get_str(net_via_ids[n - 1], val);
+            WEB_printf(req, ",\"via\":\"%s\"", strcmp(val, "wg") ? "wan" : "wg");
         }
         WEB_printf(req, "}");
     }
@@ -7327,7 +7330,7 @@ void CGI_networks_apply(http_req *req)
 {
     extern int net_extra_parse(const char *s, unsigned long *ip, unsigned long *mask);
     char key[16], *v, auth[256], enc[256], nofw[256], tmp[256], cur[256], countstr[4];
-    char *ssid[4], *sec[4], *pw[4], *addr[4], *inet[4], *reach[4], *iso[4];
+    char *ssid[4], *sec[4], *pw[4], *addr[4], *inet[4], *reach[4], *iso[4], *via[4];
     unsigned long ip[4], mask[4];
     int count, n, m, router = wifi_ui_is_router();
     if (req->method != METHOD_POST) { WEB_printf(req,"ERROR: POST required"); return; }
@@ -7345,6 +7348,8 @@ void CGI_networks_apply(http_req *req)
         sprintf(key, "ADDRESS%d", n + 1); addr[n] = WEB_query(req, key);
         sprintf(key, "INTERNET%d", n + 1); inet[n] = WEB_query(req, key);
         sprintf(key, "REACH%d", n + 1); reach[n] = WEB_query(req, key);
+        sprintf(key, "VIA%d", n + 1); via[n] = WEB_query(req, key);
+        if (via[n] && strcmp(via[n],"wan") && strcmp(via[n],"wg")) { WEB_printf(req,"ERROR: VIA%d must be wan or wg", n + 1); return; }
         if (!wifi_ui_text(ssid[n],1,32)) { WEB_printf(req,"ERROR: SSID%d must be 1-32 bytes", n + 1); return; }
         if (!sec[n] || (strcmp(sec[n],"open") && strcmp(sec[n],"wpa2"))) { WEB_printf(req,"ERROR: SECURITY%d must be open or wpa2", n + 1); return; }
         if (!strcmp(sec[n],"wpa2") && (!pw[n] || !*pw[n])) {
@@ -7396,7 +7401,8 @@ void CGI_networks_apply(http_req *req)
             (pw[n] && CFG_set_str(net_key_ids[n], strcmp(sec[n],"open") ? pw[n] : "") < 0) ||
             CFG_set_str(net_ip_ids[n - 1], addr[n] ? addr[n] : "") < 0 ||
             CFG_set_str(net_inet_ids[n - 1], inet[n] ? inet[n] : "1") < 0 ||
-            CFG_set_str(net_reach_ids[n - 1], reach[n] ? reach[n] : "") < 0) { WEB_printf(req,"ERROR: settings could not be applied"); return; }
+            CFG_set_str(net_reach_ids[n - 1], reach[n] ? reach[n] : "") < 0 ||
+            CFG_set_str(net_via_ids[n - 1], via[n] ? via[n] : "wan") < 0) { WEB_printf(req,"ERROR: settings could not be applied"); return; }
     }
     sprintf(countstr, "%d", count);
     if (CFG_set_str(CFG_WLN_BssidNum, countstr) < 0 || CFG_set_str(CFG_WLN_AuthMode, auth) < 0 ||

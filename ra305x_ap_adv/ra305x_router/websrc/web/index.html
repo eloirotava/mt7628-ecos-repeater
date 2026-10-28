@@ -541,6 +541,7 @@ var REACH = [['device', 'This device'], ['lan', 'Network 1 / Ethernet'], ['net2'
     check('net' + n + '-routed', 'Routed: own address range and DHCP (router mode)');
     input('net' + n + '-address', 'Address/prefix', {maxLength: 18, spellcheck: false, autocomplete: 'off', placeholder: '10.0.' + n + '.1/24'});
     check('net' + n + '-internet', 'Internet access');
+    check('net' + n + '-via-wg', 'Internet through the WireGuard tunnel (DNS 1.1.1.1)');
     var p = document.createElement('p'); p.className = 'hint'; p.textContent = 'May reach:'; add(p);
     var box = document.createElement('div'); box.className = 'checks'; box.id = 'net' + n + '-reach'; add(box);
     REACH.forEach(function (rr) {
@@ -561,6 +562,7 @@ function netUpdate() {
     $('net' + n + '-routed').disabled = !router;
     $('net' + n + '-address').disabled = !routed;
     $('net' + n + '-internet').disabled = !routed;
+    $('net' + n + '-via-wg').disabled = !routed || !$('net' + n + '-internet').checked;
     REACH.forEach(function (rr) { var c = $('net' + n + '-reach-' + rr[0]); if (c) c.disabled = !routed; });
     $('net' + n + '-password').disabled = $('net' + n + '-security').value === 'open';
   }
@@ -576,6 +578,7 @@ function fillNetworks() {
     $('net' + n + '-routed').checked = !!x.address;
     $('net' + n + '-address').value = x.address || '10.0.' + n + '.1/24';
     $('net' + n + '-internet').checked = x.internet !== 0;
+    $('net' + n + '-via-wg').checked = x.via === 'wg';
     var reach = (x.reach || '').split(',');
     REACH.forEach(function (rr) { var c = $('net' + n + '-reach-' + rr[0]); if (c) c.checked = reach.indexOf(rr[0]) >= 0; });
     $('net' + n + '-isolate').checked = !!x.isolate;
@@ -597,6 +600,7 @@ $('networks-form').addEventListener('submit', async function (e) {
     body.set('SSID' + n, ssid); body.set('SECURITY' + n, sec); body.set('PASSWORD' + n, sec === 'wpa2' ? pw : '');
     body.set('ADDRESS' + n, routed ? addr : '');
     body.set('INTERNET' + n, $('net' + n + '-internet').checked ? '1' : '0');
+    body.set('VIA' + n, routed && $('net' + n + '-via-wg').checked ? 'wg' : 'wan');
     body.set('REACH' + n, REACH.map(function (rr) { var c = $('net' + n + '-reach-' + rr[0]); return c && c.checked ? rr[0] : ''; }).filter(Boolean).join(','));
     body.set('ISOLATE' + n, $('net' + n + '-isolate').checked ? '1' : '0');
   }

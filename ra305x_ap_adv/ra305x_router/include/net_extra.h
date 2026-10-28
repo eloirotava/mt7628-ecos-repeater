@@ -11,5 +11,6 @@ void net_extra_apply(void);
 void net_extra_fw_rules(void (*set)(char *));
 void net_extra_fw_ready(void);
 void net_extra_fw_flushed(void);
+int net_extra_via_wg(int n);
 
 #endif

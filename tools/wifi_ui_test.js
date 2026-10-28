@@ -198,12 +198,14 @@ const submit = f => f.els['wifi-form'].listeners.submit({preventDefault() {}});
   await ns({preventDefault() {}}); assert.strictEqual(f.posts().length, 0); assert(f.els['networks-msg'].textContent.includes('Network 3'));
   f.els['net3-password'].value = 'iot-pass-123'; f.els['net3-routed'].checked = true; f.els['net3-address'].value = '10.0.3.1/24';
   f.els['net3-reach-lan'].checked = true; f.els['net3-reach-net2'].checked = true; f.els['net3-internet'].checked = false;
+  f.els['net2-via-wg'].checked = true;
   await ns({preventDefault() {}});
   p = f.posts()[0]; assert.strictEqual(p.url, '/networks_apply.html');
   const b = p.options.body;
   assert.strictEqual(b.get('COUNT'), '3'); assert.strictEqual(b.get('SSID2'), 'guest'); assert.strictEqual(b.get('ADDRESS2'), '10.0.2.1/24'); assert.strictEqual(b.get('ISOLATE2'), '1');
   assert.strictEqual(b.get('SECURITY3'), 'wpa2'); assert.strictEqual(b.get('PASSWORD3'), 'iot-pass-123'); assert.strictEqual(b.get('ADDRESS3'), '10.0.3.1/24');
   assert.strictEqual(b.get('REACH3'), 'lan,net2'); assert.strictEqual(b.get('INTERNET3'), '0'); assert(!b.has('SSID4'));
+  assert.strictEqual(b.get('VIA2'), 'wg'); assert.strictEqual(b.get('VIA3'), 'wan');
   /* bridge mode: no routed networks */
   f = fixture(Object.assign({}, base, {networks: nets}));
   assert(f.els['net2-routed'].disabled && f.els['net2-address'].disabled);

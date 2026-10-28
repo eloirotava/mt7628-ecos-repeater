@@ -18,11 +18,11 @@ typedef int cyg_handle_t; typedef int cyg_thread; typedef int cyg_sem_t; typedef
 typedef struct { int method; } http_req;
 #define METHOD_POST 1
 static const char *names[12], *values[12];
-static char cfg[64][256], output[8192];
+static char cfg[128][256], output[8192];
 static int sets, fail_at=-1;
 static char *WEB_query(http_req *req,const char *key) { int i; for(i=0;i<12;i++)if(names[i]&&!strcmp(names[i],key))return (char *)values[i];return NULL; }
 static void WEB_printf(http_req *req,const char *fmt,...) { va_list ap;va_start(ap,fmt);vsnprintf(output+strlen(output),sizeof(output)-strlen(output),fmt,ap);va_end(ap); }
-static int slot(int id) { return id >= 9001 ? 50 + id - 9001 : id; }
+static int slot(int id) { return id >= 9001 ? 100 + id - 9001 : id; } /* startup lines after all constants */
 static void CFG_get_str(int id,char *out) { strcpy(out,cfg[slot(id)]); }
 static int CFG_set_str(int id,char *val) { sets++; if(sets==fail_at)return -1;strcpy(cfg[slot(id)],val);return 0; }
 static int CFG_commit(int flags) { assert(flags==CFG_NO_EVENT);return 1; }
@@ -62,7 +62,7 @@ static void setup(const char *mode) {
  int i; const char *n[]={"MODE","SSID","PASSWORD","CHANNEL","UPLINK_SSID","UPLINK_PASSWORD","UPLINK_SECURITY",NULL};
  const char *v[]={mode,"Test AP","test-pass-123","6","Test uplink","uplink-pass-123","wpa2",NULL};
  for(i=0;i<12;i++){names[i]=i<8?n[i]:NULL;values[i]=i<8?v[i]:NULL;}
- for(i=0;i<64;i++)strcpy(cfg[i],"original");
+ for(i=0;i<128;i++)strcpy(cfg[i],"original");
  sets=0;fail_at=-1;output[0]=0;wifi_ui_busy=0;save_fail=0;HTTPD_reconf=0;reboots=0;
 }
 static void rejected(void) { CGI_wifi_apply(&post);assert(!strncmp(output,"ERROR:",6));assert(sets==0); }
@@ -85,7 +85,7 @@ int main(void) {
  setup("repeater");CGI_wifi_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[CFG_WLN_ApCliEnable],"1"));assert(!strcmp(cfg[CFG_WLN_MACRepeaterEn],"1"));assert(!strcmp(cfg[CFG_WLN_ApCliAuthMode],"WPA2PSK"));assert(!strcmp(cfg[CFG_WLN_ApCliWPAPSK],"uplink-pass-123"));
  setup("repeater");values[6]="open";values[5]=NULL;CGI_wifi_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[CFG_WLN_ApCliEncrypType],"NONE"));assert(!strcmp(cfg[CFG_WLN_ApCliWPAPSK],""));
  setup("repeater");values[6]="mixed";CGI_wifi_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[CFG_WLN_ApCliAuthMode],"WPAPSKWPA2PSK"));
- setup("ap");fail_at=7;CGI_wifi_apply(&post);assert(strstr(output,"ERROR:"));for(i=0;i<64;i++)assert(!strcmp(cfg[i],"original"));
+ setup("ap");fail_at=7;CGI_wifi_apply(&post);assert(strstr(output,"ERROR:"));for(i=0;i<128;i++)assert(!strcmp(cfg[i],"original"));
  setup("ap");strcpy(cfg[CFG_WLN_SSID1],"</script>\"&");CGI_wifi_state(&post);assert(strstr(output,"\\u003c/script\\u003e"));assert(!strstr(output,"</script>"));assert(!strstr(output,"test-pass"));
  /* Device network security */
  setup("ap");names[8]="DEVICE_SECURITY";values[8]="open";values[2]="";CGI_wifi_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[CFG_WLN_AuthMode],"OPEN;OPEN;OPEN;OPEN"));assert(!strcmp(cfg[CFG_WLN_EncrypType],"NONE;NONE;NONE;NONE"));assert(!strcmp(cfg[CFG_WLN_WPAPSK1],""));
@@ -132,12 +132,12 @@ int main(void) {
  setup("ap");strcpy(cfg[CFG_SYS_WG_EN],"1");strcpy(cfg[CFG_SYS_WG_PSK],"secret-psk");CGI_wifi_state(&post);assert(strstr(output,"\"wireguard\":{\"enabled\":1"));assert(strstr(output,"\"state\":\"connected\""));assert(strstr(output,"\"preshared_key_set\":1"));assert(strstr(output,"\"handshake_age\":12"));assert(!strstr(output,"secret-psk"));
  /* Startup script */
 #define SU(a,b) do{setup("ap");for(i=0;i<12;i++)names[i]=NULL;names[0]="COMMAND1";values[0]=(a);names[1]="COMMAND3";values[1]=(b);}while(0)
- SU("net route add 10.9.0.0 255.255.0.0 192.168.1.2","");strcpy(cfg[51],"keep me");CGI_startup_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[50],"net route add 10.9.0.0 255.255.0.0 192.168.1.2"));assert(!strcmp(cfg[52],""));assert(!strcmp(cfg[51],"keep me"));assert(reboots==0);
+ SU("net route add 10.9.0.0 255.255.0.0 192.168.1.2","");strcpy(cfg[101],"keep me");CGI_startup_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[100],"net route add 10.9.0.0 255.255.0.0 192.168.1.2"));assert(!strcmp(cfg[102],""));assert(!strcmp(cfg[101],"keep me"));assert(reboots==0);
  SU("bad\nline","");CGI_startup_apply(&post);assert(strstr(output,"printable"));assert(sets==0);
  {static char longline[260];memset(longline,'a',201);longline[201]=0;SU(longline,"");CGI_startup_apply(&post);assert(strstr(output,"longer"));assert(sets==0);}
  SU("x","");CGI_startup_apply(&get);assert(strstr(output,"POST required"));assert(sets==0);
  SU("x","");save_fail=1;CGI_startup_apply(&post);assert(strstr(output,"saving"));
- setup("ap");strcpy(cfg[50],"net route add a b c");strcpy(cfg[51],"");CGI_wifi_state(&post);assert(strstr(output,"\"startup\":[{\"command\":\"net route add a b c\",\"result\":\"ok\"},{\"command\":\"\",\"result\":\"\"}"));
+ setup("ap");strcpy(cfg[100],"net route add a b c");strcpy(cfg[101],"");CGI_wifi_state(&post);assert(strstr(output,"\"startup\":[{\"command\":\"net route add a b c\",\"result\":\"ok\"},{\"command\":\"\",\"result\":\"\"}"));
  puts("PASS: startup script validation, keep/clear semantics, no restart and state");
  /* Router (WISP) mode */
  setup("router");names[8]="DEVICE_SECURITY";values[8]="open";values[2]="";CGI_wifi_apply(&post);assert(!strcmp(output,"OK"));assert(reboots==1);
@@ -166,12 +166,15 @@ int main(void) {
  NETSETUP();Q("COUNT","2");Q("SSID2","guest");Q("SECURITY2","open");Q("REACH2","lan,everything");CGI_networks_apply(&post);assert(strstr(output,"REACH2"));assert(sets==0);
  NETSETUP();Q("COUNT","2");Q("SSID2","guest");Q("SECURITY2","wpa2");CGI_networks_apply(&post);assert(strstr(output,"PASSWORD2 is required"));assert(sets==0);
  NETSETUP();strcpy(cfg[CFG_WLN_AuthMode],"OPEN;WPA2PSK;OPEN;OPEN");strcpy(cfg[CFG_WLN_WPAPSK2],"stored-key-22");Q("COUNT","2");Q("SSID2","guest");Q("SECURITY2","wpa2");CGI_networks_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[CFG_WLN_WPAPSK2],"stored-key-22"));
+ NETSETUP();Q("COUNT","2");Q("SSID2","guest");Q("SECURITY2","open");Q("ADDRESS2","10.0.2.1/24");Q("VIA2","tunnel");CGI_networks_apply(&post);assert(strstr(output,"VIA2"));assert(sets==0);
+ NETSETUP();Q("COUNT","2");Q("SSID2","guest");Q("SECURITY2","open");Q("ADDRESS2","10.0.2.1/24");Q("VIA2","wg");CGI_networks_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[CFG_SYS_NET2_VIA],"wg"));
+ NETSETUP();Q("COUNT","2");Q("SSID2","guest");Q("SECURITY2","open");CGI_networks_apply(&post);assert(!strcmp(cfg[CFG_SYS_NET2_VIA],"wan"));
  NETSETUP();Q("COUNT","5");CGI_networks_apply(&post);assert(strstr(output,"COUNT"));assert(sets==0);
  NETSETUP();Q("COUNT","2");Q("SSID2","x");Q("SECURITY2","open");CGI_networks_apply(&get);assert(strstr(output,"POST required"));
  /* state */
  NETSETUP();strcpy(cfg[CFG_WLN_BssidNum],"2");strcpy(cfg[CFG_WLN_SSID2],"guest");strcpy(cfg[CFG_SYS_NET2_IP],"10.0.2.1/24");strcpy(cfg[CFG_SYS_NET2_INTERNET],"1");strcpy(cfg[CFG_LAN_DHCPD_EN],"1");strcpy(cfg[CFG_WLN_WPAPSK2],"secret-net-key");
  CGI_wifi_state(&post);assert(strstr(output,"\"mode\":\"router\""));assert(strstr(output,"\"lan\":{\"address\":\"10.0.1.1/24\",\"dhcp\":1}"));
- assert(strstr(output,"{\"id\":2,\"enabled\":1,\"ssid\":\"guest\",\"security\":\"open\",\"isolate\":0,\"address\":\"10.0.2.1/24\""));assert(strstr(output,"{\"id\":3,\"enabled\":0"));assert(!strstr(output,"secret-net-key"));
+ assert(strstr(output,"{\"id\":2,\"enabled\":1,\"ssid\":\"guest\",\"security\":\"open\",\"isolate\":0,\"address\":\"10.0.2.1/24\""));assert(strstr(output,"{\"id\":3,\"enabled\":0"));assert(strstr(output,"\"via\":\"wan\""));assert(!strstr(output,"secret-net-key"));
   setup("ap");CGI_wifi_state(&post);assert(strstr(output,"\"firmware\":{\"busy\":0,\"state\":\"idle\",\"error\":\"none\"}"));
  puts("PASS: router mode, per-SSID list preservation, networks validation/overlaps/apply and state");
  puts("PASS: WireGuard validation, preshared key handling, admin requirement, save+restart and state");
