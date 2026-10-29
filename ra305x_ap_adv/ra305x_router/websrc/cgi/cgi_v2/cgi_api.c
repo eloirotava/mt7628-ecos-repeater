@@ -229,6 +229,7 @@ static cyg_sem_t wifi_ui_wake;
 
 static int wifi_ui_restart(void);
 static int wifi_ui_is_router(void);
+static int wifi_ui_is_gateway(void);
 static void net_state(http_req *req);
 extern int CFG_telnet_allowed(void);
 static int wifi_ui_uplink_connected(void);
@@ -299,7 +300,7 @@ void CGI_wifi_state(http_req *req)
     char val[256];
     CFG_get_str(CFG_WLN_ApCliEnable, val);
     WEB_printf(req, "{\"busy\":%d,\"revision\":%u,\"error\":%d,\"saved\":%d,\"stage\":\"%s\",\"mode\":\"%s\",\"ssid\":", wifi_ui_busy, wifi_ui_revision, wifi_ui_error, wifi_ui_saved, wifi_ui_stage,
-               wifi_ui_is_router() ? "router" : atoi(val) ? "repeater" : "ap");
+               wifi_ui_is_gateway() ? "gateway" : wifi_ui_is_router() ? "router" : atoi(val) ? "repeater" : "ap");
     CFG_get_str(CFG_WLN_SSID1, val); wifi_ui_json(req,val);
     WEB_printf(req, ",\"uplink\":");
     CFG_get_str(CFG_WLN_ApCliSsid, val); wifi_ui_json(req,val);
@@ -392,6 +393,14 @@ static int wifi_ui_mac(const char *s)
     return 1;
 }
 
+/* Gateway mode: opmode 1, Ethernet is the WAN, Wi-Fi the LAN behind NAT. */
+static int wifi_ui_is_gateway(void)
+{
+    char v[16];
+    v[0] = 0; CFG_get_str(CFG_SYS_OPMODE, v);
+    return atoi(v) == 1;
+}
+
 /* Router (WISP) mode: opmode 2 with apcli0 as WAN. */
 static int wifi_ui_is_router(void)
 {
@@ -411,7 +420,7 @@ void CGI_wifi_apply(http_req *req)
     char curkey[256], curup[256], curupkey[256], curauth[256];
     char authl[256], encl[256], hidel[256], curl[256];
     char lanip[20], lanmask[20], dstart[20], dend[20];
-    int repeater, router, was_router, open_ap, ch, count = 0, i;
+    int repeater, router, gateway, routed, was_routed, open_ap, ch, count = 0, i;
     static int created;
     if (req->method != METHOD_POST) { WEB_printf(req,"ERROR: POST required"); return; }
     if (wifi_ui_busy) { WEB_printf(req,"ERROR: configuration is busy"); return; }
@@ -422,16 +431,18 @@ void CGI_wifi_apply(http_req *req)
     save = WEB_query(req,"SAVE");
     dsec = WEB_query(req,"DEVICE_SECURITY");
     if (save && strcmp(save,"0") && strcmp(save,"1")) goto invalid;
-    if (!mode || (strcmp(mode,"ap") && strcmp(mode,"repeater") && strcmp(mode,"router"))) goto invalid;
+    if (!mode || (strcmp(mode,"ap") && strcmp(mode,"repeater") && strcmp(mode,"router") && strcmp(mode,"gateway"))) goto invalid;
     repeater = !strcmp(mode,"repeater");
     router = !strcmp(mode,"router");
-    was_router = wifi_ui_is_router();
+    gateway = !strcmp(mode,"gateway");
+    routed = router || gateway;
+    was_routed = wifi_ui_is_router() || wifi_ui_is_gateway();
     lanaddr = WEB_query(req,"LAN_ADDRESS"); landhcp = WEB_query(req,"LAN_DHCP"); bssid = WEB_query(req,"UPLINK_BSSID");
-    if (router) {
+    if (routed) {
         extern int net_extra_parse(const char *s, unsigned long *ip, unsigned long *mask);
         unsigned long lip, lmask, base;
         struct in_addr a;
-        if (!lanaddr || !*lanaddr) lanaddr = "10.0.1.1/24";
+        if (!lanaddr || !*lanaddr) lanaddr = gateway ? "192.168.11.1/24" : "10.0.1.1/24";
         if (net_extra_parse(lanaddr, &lip, &lmask)) { WEB_printf(req,"ERROR: LAN_ADDRESS must be IPv4/prefix (8-30), for example 10.0.1.1/24"); return; }
         if (landhcp && strcmp(landhcp,"0") && strcmp(landhcp,"1")) goto invalid;
         a.s_addr = lip; strcpy(lanip, inet_ntoa(a));
@@ -478,11 +489,13 @@ void CGI_wifi_apply(http_req *req)
     if (!changes) { WEB_printf(req,"ERROR: insufficient memory"); return; }
 #define WIFI_CHANGE(k,v) do { changes[count].id=(k); changes[count++].value=(v); } while(0)
     /* Opmode 3 bridges Ethernet and Wi-Fi; ApCliEnable selects the uplink.
-     * Router: opmode 2, apcli0 is the WAN, the LAN gets its own address. */
-    WIFI_CHANGE(CFG_SYS_OPMODE,router ? "2" : "3");
-    WIFI_CHANGE(CFG_LAN_IP_MODE,router ? "1" : "0");
-    WIFI_CHANGE(CFG_LAN_DHCPD_EN,router && !(landhcp && !strcmp(landhcp,"0")) ? "1" : "0");
-    if (router) {
+     * Router: opmode 2, apcli0 is the WAN, the LAN gets its own address.
+     * Gateway: opmode 1, Ethernet is the WAN (DHCP), Wi-Fi the LAN. */
+    WIFI_CHANGE(CFG_SYS_OPMODE,gateway ? "1" : router ? "2" : "3");
+    WIFI_CHANGE(CFG_LAN_IP_MODE,routed ? "1" : "0");
+    WIFI_CHANGE(CFG_LAN_DHCPD_EN,routed && !(landhcp && !strcmp(landhcp,"0")) ? "1" : "0");
+    if (gateway) WIFI_CHANGE(CFG_WAN_IP_MODE,"2");
+    if (routed) {
         WIFI_CHANGE(CFG_LAN_IP,lanip);
         WIFI_CHANGE(CFG_LAN_MSK,lanmask);
         WIFI_CHANGE(CFG_LAN_DHCPD_START,dstart);
@@ -524,7 +537,7 @@ void CGI_wifi_apply(http_req *req)
     free(changes);
     /* Suppress automatic monitor events: this worker applies without reboot. */
     CFG_commit(CFG_NO_EVENT);
-    if (router || was_router) {
+    if (routed || was_routed) {
         /* the LAN address and the WAN change only at boot: save and restart */
         if (CFG_save_user()) { WEB_printf(req,"ERROR: saving to flash failed"); return; }
         WEB_printf(req,"OK");
@@ -7285,7 +7298,7 @@ static void net_state(http_req *req)
     int n, count;
     val[0] = 0; CFG_get_str(CFG_WLN_BssidNum, val);
     count = atoi(val);
-    if (wifi_ui_is_router()) {
+    if (wifi_ui_is_router() || wifi_ui_is_gateway()) {
         char ip[20], mask[20];
         unsigned long m;
         int bits = 0;
@@ -7295,6 +7308,12 @@ static void net_state(http_req *req)
         while (m & 0x80000000UL) { bits++; m <<= 1; }
         CFG_get_str(CFG_LAN_DHCPD_EN, val);
         WEB_printf(req, ",\"lan\":{\"address\":\"%s/%d\",\"dhcp\":%d}", ip, bits, atoi(val) == 1);
+    }
+    if (wifi_ui_is_gateway()) {
+        struct in_addr w;
+        w.s_addr = SYS_wan_ip;
+        /* address the Ethernet WAN got by DHCP; empty until it has one */
+        WEB_printf(req, ",\"wan_address\":\"%s\"", SYS_wan_ip ? inet_ntoa(w) : "");
     }
     WEB_printf(req, ",\"networks\":[");
     for (n = 0; n < 4; n++) {
