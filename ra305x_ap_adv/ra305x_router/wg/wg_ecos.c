@@ -306,13 +306,16 @@ static void wss_drop(void)
 
 /* next datagram into d: length, 0 after ~1 s without one, -1 if the
  * connection is gone */
+static const char *wss_why = ""; /* which step of wss_recv gave up */
+static long wss_up;              /* uptime when the WebSocket opened */
+
 static long wss_recv(uint8_t *d, size_t cap)
 {
 	for (;;) {
 		int op;
 		size_t off, pl;
 		long t = ws_parse(wss_rx, wss_rx_len, sizeof wss_rx, &op, &off, &pl), r;
-		if (t < 0) return -1;
+		if (t < 0) { wss_why = "invalid WebSocket frame"; return -1; }
 		if (t > 0) {
 			r = -2;
 			if (op == 2 && pl <= cap) { memcpy(d, wss_rx + off, pl); r = (long)pl; }
@@ -321,7 +324,7 @@ static long wss_recv(uint8_t *d, size_t cap)
 				tls_write(&wss_conn, wss_out, ws_frame(wss_out, 0xA, wss_rx + off, pl));
 				cyg_mutex_unlock(&lock);
 			}
-			if (op == 8) return -1;
+			if (op == 8) { wss_why = "server closed the WebSocket"; return -1; }
 			wss_rx_len -= (size_t)t;
 			memmove(wss_rx, wss_rx + t, wss_rx_len);
 			if (r >= 0) return r;
@@ -332,10 +335,11 @@ static long wss_recv(uint8_t *d, size_t cap)
 			p.fd = wss_fd; p.events = POLLIN; p.revents = 0;
 			r = x_poll(&p, 1, 1000);
 			if (r == 0) return 0;
-			if (r < 0) return -1;
+			if (r < 0) { wss_why = "poll failed"; return -1; }
 		}
+		errno = 0;
 		r = tls_read(&wss_conn, wss_rx + wss_rx_len, sizeof wss_rx - wss_rx_len);
-		if (r < 0) return -1;
+		if (r < 0) { wss_why = "TLS read failed"; return -1; }
 		wss_rx_len += (size_t)r;
 	}
 }
@@ -402,13 +406,17 @@ static void rx_thread(cyg_addrword_t arg)
 					continue;
 				}
 				wss_fails = 0;
+				wss_up = uptime();
 				init_time = -1; /* new path: handshake again right away */
 			}
 			n = wss_recv(rx_buf, sizeof rx_buf);
 			if (n < 0) {
+				char why[160];
+				snprintf(why, sizeof why, "WSS: connection lost (%s, errno %d, %ld s after opening); reconnecting",
+				         wss_why, errno, uptime() - wss_up);
 				wss_drop();
 				if (state == WG_CONNECTED) wss_since = uptime(); /* a working path gets 3 more minutes */
-				set_status(WG_HANDSHAKE, "WSS: connection lost; reconnecting");
+				set_status(WG_HANDSHAKE, why);
 				continue;
 			}
 		} else {
