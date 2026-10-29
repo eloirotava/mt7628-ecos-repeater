@@ -63,8 +63,7 @@ legend{font-weight:600;padding:0 4px}
 
 <nav class="tabs" role="tablist" aria-label="Settings">
 <button type="button" role="tab" data-tab="status">Status</button>
-<button type="button" role="tab" data-tab="wireless">Wireless</button>
-<button type="button" role="tab" data-tab="networks">Networks</button>
+<button type="button" role="tab" data-tab="network">Network</button>
 <button type="button" role="tab" data-tab="vpn">VPN</button>
 <button type="button" role="tab" data-tab="system">System</button>
 </nav>
@@ -75,8 +74,8 @@ legend{font-weight:600;padding:0 4px}
 <section aria-labelledby="h-status">
 <h2 id="h-status">Status</h2>
 <dl>
-<dt>Mode</dt><dd id="st-mode">–</dd>
-<dt>Device network</dt><dd id="st-ssid">–</dd>
+<dt>Internet</dt><dd id="st-mode">–</dd>
+<dt>Network 1</dt><dd id="st-ssid">–</dd>
 <dt>Uplink</dt><dd id="st-uplink">–</dd>
 <dt>Channel</dt><dd id="st-channel">–</dd>
 <dt>Admin password</dt><dd id="st-admin">–</dd>
@@ -90,14 +89,12 @@ legend{font-weight:600;padding:0 4px}
 
 </div>
 
-<div class="tab" id="tab-wireless" role="tabpanel">
-<form id="wifi-form" novalidate>
-<section aria-labelledby="h-mode">
-<h2 id="h-mode">Uplink</h2>
-<label class="radio"><input type="radio" name="MODE" value="gateway"><span><strong>Ethernet (router)</strong><small>Cable to your router or modem as the Internet uplink; this device runs its own Wi-Fi network behind NAT with DHCP (factory default: 192.168.11.1).</small></span></label>
-<label class="radio"><input type="radio" name="MODE" value="ap"><span><strong>Ethernet (access point)</strong><small>Cable to your router; this device provides Wi-Fi.</small></span></label>
-<label class="radio"><input type="radio" name="MODE" value="repeater"><span><strong>Wi-Fi (repeater)</strong><small>Connects to an existing 2.4 GHz network and extends it. Unplug the Ethernet cable first to avoid a network loop.</small></span></label>
-<label class="radio"><input type="radio" name="MODE" value="router"><span><strong>Wi-Fi (router)</strong><small>Connects to an existing 2.4 GHz network as its Internet uplink and runs its own network behind NAT; the Ethernet port joins that network. Needed for routed extra networks.</small></span></label>
+<div class="tab" id="tab-network" role="tabpanel">
+<form id="setup-form" novalidate>
+<section aria-labelledby="h-internet">
+<h2 id="h-internet">Internet</h2>
+<label class="radio"><input type="radio" name="UPLINK" value="cable"><span><strong>Ethernet cable</strong><small>The cable goes to your router or modem; this device takes an address there by DHCP.</small></span></label>
+<label class="radio"><input type="radio" name="UPLINK" value="wifi"><span><strong>Wi-Fi</strong><small>Connects to an existing 2.4 GHz network. All networks of this device then use that network's channel.</small></span></label>
 <div id="uplink-fields" hidden>
 <div class="row"><button type="button" id="scan" class="secondary">Scan for networks</button></div>
 <p id="scan-msg" class="msg"></p>
@@ -112,48 +109,24 @@ legend{font-weight:600;padding:0 4px}
 <label for="uplink-bssid">Access point (BSSID, optional)</label>
 <input id="uplink-bssid" maxlength="17" autocomplete="off" spellcheck="false" placeholder="aa:bb:cc:dd:ee:ff">
 <small>Pins the uplink to one access point when several share the network name.</small>
-</div>
-<div id="router-fields" hidden>
-<label for="lan-address">This device's network (address/prefix)</label>
-<input id="lan-address" maxlength="18" autocomplete="off" spellcheck="false" placeholder="10.0.1.1/24">
-<label class="check"><input type="checkbox" id="lan-dhcp" checked> Hand out addresses (DHCP) on this network and the Ethernet port</label>
-<small>Changing to or from a router mode restarts the device. Keep a way back: this network's address, the rescue address 192.168.11.1, or WireGuard.</small>
-</div>
-</section>
-
-<section aria-labelledby="h-device">
-<h2 id="h-device">Device network</h2>
-<label for="ssid">Network name (SSID)</label>
-<input id="ssid" maxlength="32" autocomplete="off" spellcheck="false">
-<label for="device-security">Security</label>
-<select id="device-security"><option value="wpa2">WPA2-Personal (AES)</option><option value="open">Open (no password)</option></select>
-<div id="device-password-field">
-<label for="password">Password</label>
-<input id="password" type="password" maxlength="63" autocomplete="new-password">
-<small id="password-hint">8–63 ASCII characters.</small>
+<label for="ethernet">Ethernet port</label>
+<select id="ethernet"><option value="net1">Part of network 1</option><option value="internet">Bridged with the Internet side</option></select>
+<small>“Part of network 1” needs network 1 as NAT and no bridged network.</small>
 </div>
 <label for="channel">Channel</label>
 <select id="channel"></select>
-<small id="channel-hint">2.4 GHz channel for this network.</small>
-<div class="row"><button type="submit" id="apply">Save &amp; apply</button></div>
-<small>Applying restarts Wi-Fi; reconnect if your device disconnects.</small>
-<p id="wifi-msg" class="msg" role="status" aria-live="polite"></p>
+<small id="channel-hint">2.4 GHz channel for all networks.</small>
 </section>
-</form>
 
-</div>
-
-<div class="tab" id="tab-networks" role="tabpanel">
-<form id="networks-form" novalidate>
 <section aria-labelledby="h-networks">
 <h2 id="h-networks">Wi-Fi networks</h2>
-<p class="hint">Network 1 is the device network set under Wireless. Networks 2–7 are extra SSIDs on the same radio and channel: bridged with network 1, or — in router mode — routed with their own address range, DHCP and the access you allow below.</p>
+<p class="hint">Every network is set up the same way. <strong>NAT</strong>: its own address range with DHCP, behind this device, with the access you allow. <strong>Bridge</strong>: clients join the Internet side's network and get their addresses from its router. Network 1 always exists; up to 7 networks share the radio.</p>
 <label for="net-count">Active networks</label>
 <select id="net-count"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option></select>
-<label class="check"><input type="checkbox" id="net1-isolate"> Network 1: clients cannot see each other</label>
 <div id="net-list"></div>
-<div class="row"><button type="submit">Save &amp; restart</button></div>
-<p id="networks-msg" class="msg" role="status" aria-live="polite"></p>
+<div class="row"><button type="submit" id="apply">Save &amp; restart</button></div>
+<small>Saving restarts the device (about one minute). Keep a way back: a NAT network's address, the rescue address 192.168.11.1, or WireGuard.</small>
+<p id="setup-msg" class="msg" role="status" aria-live="polite"></p>
 </section>
 </form>
 </div>
@@ -258,8 +231,8 @@ legend{font-weight:600;padding:0 4px}
 var $ = function (id) { return document.getElementById(id); };
 var state = {};
 try { state = JSON.parse($('wifi-state').textContent); } catch (e) {}
-var wifiForm = $('wifi-form'), adminForm = $('admin-form');
-var TABS = {status: ['tab-status'], wireless: ['tab-wireless'], networks: ['tab-networks'], vpn: ['tab-vpn'], system: ['tab-system', 'tab-system2']};
+var setupForm = $('setup-form'), adminForm = $('admin-form');
+var TABS = {status: ['tab-status'], network: ['tab-network'], vpn: ['tab-vpn'], system: ['tab-system', 'tab-system2']};
 function showTab(name) {
   if (!TABS[name]) name = 'status';
   Object.keys(TABS).forEach(function (t) { TABS[t].forEach(function (id) { $(id).hidden = t !== name; }); });
@@ -268,7 +241,7 @@ function showTab(name) {
 Array.prototype.forEach.call(document.querySelectorAll('nav.tabs button'), function (b) {
   b.addEventListener('click', function () { var t = b.getAttribute('data-tab'); try { history.replaceState(null, '', '#' + t); } catch (e) {} showTab(t); });
 });
-function tabFromHash() { var h = (location.hash || '').replace('#', ''); showTab(h === 'admin' ? 'system' : h); }
+function tabFromHash() { var h = (location.hash || '').replace('#', ''); showTab(h === 'admin' ? 'system' : h === 'wireless' || h === 'networks' ? 'network' : h); }
 tabFromHash();
 if (window.addEventListener) window.addEventListener('hashchange', tabFromHash);
 
@@ -289,16 +262,13 @@ function bytes(n) {
   return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
 }
 function securityName(s) { return s === 'OPEN' ? 'open' : s === 'WPAPSKWPA2PSK' ? 'mixed' : 'wpa2'; }
-function currentMode() { return wifiForm.querySelector('input[name=MODE]:checked').value; }
-function isRepeater() { var m = currentMode(); return m === 'repeater' || m === 'router'; } /* has a Wi-Fi uplink */
-
 function renderStatus() {
-  var rep = state.mode === 'repeater' || state.mode === 'router';
+  var rep = state.uplink_type === 'wifi' || state.mode === 'repeater' || state.mode === 'router';
   var nets = (state.networks || []).filter(function (n) { return n.enabled; });
-  $('st-nets').textContent = nets.length ? nets.map(function (n) { return n.ssid + (n.address ? ' (' + n.address + ')' : ''); }).join(', ') : '–';
+  $('st-nets').textContent = nets.length ? nets.map(function (n) { return n.ssid + (n.type === 'bridge' || !n.address ? ' (bridge)' : ' (NAT ' + n.address + ')'); }).join(', ') : '–';
   var built = state.build ? new Date(state.build * 1000).toISOString().slice(0, 10) : '';
   $('subtitle').textContent = 'Firmware ' + (state.version || '?') + (built ? ' · built ' + built : '');
-  $('st-mode').textContent = state.mode === 'gateway' ? 'Ethernet router (' + ((state.lan || {}).address || '') + (state.wan_address ? ', uplink ' + state.wan_address : ', no uplink address yet') + ')' : state.mode === 'router' ? 'Wi-Fi router (' + ((state.lan || {}).address || '') + ')' : rep ? 'Wi-Fi repeater' : 'Ethernet access point';
+  $('st-mode').textContent = (rep ? 'Wi-Fi' : 'Ethernet cable' + (state.wan_address ? ' (' + state.wan_address + ')' : '')) + (state.ethernet === 'net1' ? ' · Ethernet port in network 1' : '');
   $('st-ssid').textContent = (state.ssid || '–') + (state.device_security === 'open' ? ' (open)' : ' (WPA2)');
   var up = $('st-uplink');
   if (!rep) { up.textContent = 'Ethernet'; up.className = ''; }
@@ -329,18 +299,77 @@ function renderStatus() {
   else msg($('st-apply'), '');
 }
 
+function currentUplink() { var r = setupForm.querySelector('input[name=UPLINK]:checked'); return r ? r.value : 'cable'; }
+function isRepeater() { return currentUplink() === 'wifi'; } /* has a Wi-Fi uplink */
+var NET_MAX = 7; /* 8 beacons on the radio, one kept for a Wi-Fi uplink */
+var REACH = [['device', 'This device']].concat([1, 2, 3, 4, 5, 6, 7].map(function (n) { return ['net' + n, 'Network ' + n]; }), [['lan', 'Local network on the Internet side'], ['wg', 'WireGuard']]);
+(function () {
+  var list = $('net-list');
+  for (var n = 1; n <= NET_MAX; n++) {
+    var fs = document.createElement('fieldset'); fs.id = 'net' + n + '-box';
+    var lg = document.createElement('legend'); lg.textContent = 'Network ' + n; fs.appendChild(lg);
+    function add(el) { fs.appendChild(el); return el; }
+    function input(id, label, attrs) {
+      var l = document.createElement('label'); l.htmlFor = id; l.textContent = label; add(l);
+      var i = document.createElement('input'); i.id = id; Object.keys(attrs || {}).forEach(function (k) { i[k] = attrs[k]; }); return add(i);
+    }
+    function select(id, label, opts) {
+      var l = document.createElement('label'); l.htmlFor = id; l.textContent = label; add(l);
+      var s = document.createElement('select'); s.id = id;
+      opts.forEach(function (o) { var op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; s.appendChild(op); });
+      return add(s);
+    }
+    function check(id, label) {
+      var l = document.createElement('label'); l.className = 'check';
+      var c = document.createElement('input'); c.type = 'checkbox'; c.id = id; l.appendChild(c); l.appendChild(document.createTextNode(' ' + label)); return add(l);
+    }
+    input('net' + n + '-ssid', 'Network name (SSID)', {maxLength: 32, spellcheck: false, autocomplete: 'off'});
+    select('net' + n + '-security', 'Security', [['wpa2', 'WPA2-Personal (AES)'], ['open', 'Open (no password)']]);
+    input('net' + n + '-password', 'Password', {type: 'password', maxLength: 63, autocomplete: 'new-password', placeholder: 'leave empty to keep the saved one'});
+    select('net' + n + '-type', 'Type', [['nat', 'NAT: own address range and DHCP'], ['bridge', 'Bridge with the Internet side']]);
+    var nat = document.createElement('div'); nat.id = 'net' + n + '-nat'; add(nat);
+    var keep = fs; fs = nat;
+    input('net' + n + '-address', 'Address/prefix', {maxLength: 18, spellcheck: false, autocomplete: 'off', placeholder: n === 1 ? '192.168.11.1/24' : '10.0.' + n + '.1/24'});
+    if (n === 1) check('net1-dhcp', 'Hand out addresses (DHCP)');
+    check('net' + n + '-internet', 'Internet access');
+    check('net' + n + '-via-wg', 'Internet through the WireGuard tunnel (DNS 1.1.1.1)');
+    var p = document.createElement('p'); p.className = 'hint'; p.textContent = 'May reach:'; add(p);
+    var box = document.createElement('div'); box.className = 'checks'; box.id = 'net' + n + '-reach'; add(box);
+    REACH.forEach(function (rr) {
+      if (rr[0] === 'net' + n) return;
+      var l = document.createElement('label'); l.className = 'check';
+      var c = document.createElement('input'); c.type = 'checkbox'; c.id = 'net' + n + '-reach-' + rr[0];
+      l.appendChild(c); l.appendChild(document.createTextNode(' ' + rr[1])); box.appendChild(l);
+    });
+    fs = keep;
+    check('net' + n + '-isolate', 'Clients cannot see each other');
+    list.appendChild(fs);
+  }
+}());
+
 function fillForms() {
-  var mode = state.mode === 'repeater' || state.mode === 'router' || state.mode === 'gateway' ? state.mode : 'ap';
-  wifiForm.querySelector('input[name=MODE][value=' + mode + ']').checked = true;
-  $('ssid').value = state.ssid || '';
-  $('device-security').value = state.device_security === 'open' ? 'open' : 'wpa2';
+  var up = state.uplink_type === 'wifi' ? 'wifi' : 'cable';
+  setupForm.querySelector('input[name=UPLINK][value=' + up + ']').checked = true;
   $('channel').value = String(state.channel >= 1 && state.channel <= 13 ? state.channel : 6);
   $('uplink').value = state.uplink && state.uplink !== 'ECOSAPClient' ? state.uplink : '';
   $('uplink-security').value = securityName(state.security);
+  $('ethernet').value = state.ethernet === 'internet' ? 'internet' : 'net1';
   $('admin-user').value = state.admin_user || 'admin';
-  $('lan-address').value = (state.lan || {}).address || (state.mode === 'gateway' ? '192.168.11.1/24' : '10.0.1.1/24');
-  $('lan-dhcp').checked = state.lan ? !!state.lan.dhcp : true;
-  fillNetworks();
+  var nets = state.networks || [];
+  $('net-count').value = String(Math.max(1, nets.filter(function (x) { return x.enabled; }).length));
+  for (var n = 1; n <= NET_MAX; n++) {
+    var x = nets[n - 1] || {};
+    $('net' + n + '-ssid').value = x.ssid || (n === 1 ? state.ssid || '' : '');
+    $('net' + n + '-security').value = x.security === 'open' || (n === 1 && !x.security && state.device_security === 'open') ? 'open' : 'wpa2';
+    $('net' + n + '-type').value = x.type === 'bridge' ? 'bridge' : 'nat';
+    $('net' + n + '-address').value = x.address || (n === 1 ? '192.168.11.1/24' : '10.0.' + n + '.1/24');
+    $('net' + n + '-internet').checked = x.internet !== 0;
+    $('net' + n + '-via-wg').checked = x.via === 'wg';
+    var reach = (x.reach || (n === 1 ? 'device' : '')).split(',');
+    REACH.forEach(function (rr) { var c = $('net' + n + '-reach-' + rr[0]); if (c) c.checked = reach.indexOf(rr[0]) >= 0; });
+    $('net' + n + '-isolate').checked = !!x.isolate;
+  }
+  $('net1-dhcp').checked = state.lan ? !!state.lan.dhcp : true;
   var wg = state.wireguard || {};
   $('wg-enabled').checked = !!wg.enabled;
   $('wg-address').value = wg.address || '';
@@ -352,19 +381,22 @@ function fillForms() {
 }
 
 function update() {
-  var rep = isRepeater();
+  var rep = isRepeater(), count = +$('net-count').value;
   $('uplink-fields').hidden = !rep;
-  $('router-fields').hidden = currentMode() !== 'router' && currentMode() !== 'gateway';
-  var open = $('device-security').value === 'open';
-  $('device-password-field').hidden = open;
-  $('password-hint').textContent = '8–63 ASCII characters.' + (state.device_security === 'wpa2' ? ' Leave empty to keep the current password.' : '');
   var upOpen = $('uplink-security').value === 'open';
   $('uplink-password').disabled = upOpen;
   $('uplink-password-hint').hidden = upOpen;
   $('channel').disabled = rep;
-  $('channel-hint').textContent = rep ? 'With a Wi-Fi uplink the channel follows the selected network.' : '2.4 GHz channel for this network.';
+  $('channel-hint').textContent = rep ? 'With a Wi-Fi uplink the channel follows the selected network.' : '2.4 GHz channel for all networks.';
+  for (var n = 1; n <= NET_MAX; n++) {
+    var nat = $('net' + n + '-type').value === 'nat';
+    $('net' + n + '-box').hidden = n > count;
+    $('net' + n + '-nat').hidden = !nat;
+    $('net' + n + '-password').disabled = $('net' + n + '-security').value === 'open';
+    $('net' + n + '-via-wg').disabled = !$('net' + n + '-internet').checked;
+  }
 }
-wifiForm.addEventListener('change', update);
+setupForm.addEventListener('change', update);
 
 async function fetchState() {
   var r = await fetch('/wifi_state.html?t=' + Date.now(), {cache: 'no-store', signal: AbortSignal.timeout(4000)});
@@ -450,53 +482,52 @@ async function post(url, body, timeout) {
   return (await r.text()).trim();
 }
 
-wifiForm.addEventListener('submit', async function (e) {
+setupForm.addEventListener('submit', async function (e) {
   e.preventDefault();
-  var out = $('wifi-msg'), button = $('apply');
-  var rep = isRepeater();
-  var ssid = $('ssid').value, uplink = $('uplink').value;
-  var open = $('device-security').value === 'open', pw = $('password').value;
-  var upOpen = $('uplink-security').value === 'open', upPw = $('uplink-password').value;
-  if (!ssidOK(ssid) || (rep && !ssidOK(uplink))) return msg(out, 'Network names must be 1–32 bytes without control characters.', 'bad');
-  if (!open && (pw ? !asciiKey(pw) : state.device_security !== 'wpa2')) return msg(out, 'Enter a device network password of 8–63 ASCII characters.', 'bad');
-  if (rep && !upOpen && (upPw ? !asciiKey(upPw) : uplink !== state.uplink)) return msg(out, 'Enter the uplink password (8–63 ASCII characters).', 'bad');
-  var mode = currentMode(), routed = mode === 'router' || mode === 'gateway', restart = routed || state.mode === 'router' || state.mode === 'gateway';
-  var lanAddr = $('lan-address').value.trim(), bssid = $('uplink-bssid').value.trim();
-  if (routed && !/^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/.test(lanAddr)) return msg(out, 'Device network: IPv4/prefix, for example 10.0.1.1/24.', 'bad');
-  if (rep && bssid && !/^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$/.test(bssid)) return msg(out, 'BSSID: aa:bb:cc:dd:ee:ff, or leave empty.', 'bad');
-  if (!window.confirm(mode === 'gateway' ? 'Apply Ethernet router mode? The device restarts with its own network ' + lanAddr + '; the Ethernet cable becomes its Internet uplink.' : mode === 'router' ? 'Apply router mode? The device restarts with its own network ' + lanAddr + '.' : mode === 'repeater' ? 'Apply repeater mode? Unplug the Ethernet cable first. Wi-Fi will restart.' : 'Apply access point mode? Keep the Ethernet cable connected. Wi-Fi will restart.' + (restart ? ' The device restarts.' : ''))) return;
-  var body = new URLSearchParams();
-  body.set('SAVE', '1');
-  body.set('MODE', mode);
-  if (routed) { body.set('LAN_ADDRESS', lanAddr); body.set('LAN_DHCP', $('lan-dhcp').checked ? '1' : '0'); }
-  if (rep) body.set('UPLINK_BSSID', bssid);
-  body.set('SSID', ssid);
-  body.set('DEVICE_SECURITY', open ? 'open' : 'wpa2');
-  body.set('PASSWORD', open ? '' : pw);
+  var out = $('setup-msg'), rep = isRepeater(), count = +$('net-count').value, body = new URLSearchParams();
+  var uplink = $('uplink').value, upOpen = $('uplink-security').value === 'open', upPw = $('uplink-password').value, bssid = $('uplink-bssid').value.trim();
+  var cidr = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/, bridged = rep && $('ethernet').value === 'internet';
+  if (rep && !ssidOK(uplink)) return msg(out, 'Internet: network name must be 1–32 bytes without control characters.', 'bad');
+  if (rep && !upOpen && (upPw ? !asciiKey(upPw) : uplink !== state.uplink)) return msg(out, 'Internet: enter the uplink password (8–63 ASCII characters).', 'bad');
+  if (rep && bssid && !/^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$/.test(bssid)) return msg(out, 'Internet: BSSID aa:bb:cc:dd:ee:ff, or leave empty.', 'bad');
+  body.set('UPLINK', rep ? 'wifi' : 'cable');
   body.set('CHANNEL', $('channel').value);
-  if (rep) { body.set('UPLINK_SSID', uplink); body.set('UPLINK_SECURITY', $('uplink-security').value); body.set('UPLINK_PASSWORD', upOpen ? '' : upPw); }
-  button.disabled = true;
-  msg(out, 'Applying… reconnect to “' + ssid + '” if your connection drops.');
-  var expected = (state.revision || 0) + 1;
+  if (rep) {
+    body.set('UPLINK_SSID', uplink); body.set('UPLINK_SECURITY', $('uplink-security').value); body.set('UPLINK_PASSWORD', upOpen ? '' : upPw);
+    body.set('UPLINK_BSSID', bssid); body.set('ETHERNET', $('ethernet').value);
+  }
+  body.set('COUNT', String(count));
+  for (var n = 1; n <= count; n++) {
+    var x = (state.networks || [])[n - 1] || {}, ssid = $('net' + n + '-ssid').value, sec = $('net' + n + '-security').value, pw = $('net' + n + '-password').value;
+    var nat = $('net' + n + '-type').value === 'nat', addr = $('net' + n + '-address').value.trim();
+    if (!ssidOK(ssid)) return msg(out, 'Network ' + n + ': name must be 1–32 bytes.', 'bad');
+    if (sec === 'wpa2' && (pw ? !asciiKey(pw) : x.security !== 'wpa2')) return msg(out, 'Network ' + n + ': password of 8–63 ASCII characters.', 'bad');
+    if (nat && !cidr.test(addr)) return msg(out, 'Network ' + n + ': address/prefix, for example ' + (n === 1 ? '192.168.11.1/24' : '10.0.' + n + '.1/24') + '.', 'bad');
+    if (!nat) bridged = true;
+    body.set('SSID' + n, ssid); body.set('SECURITY' + n, sec); body.set('PASSWORD' + n, sec === 'wpa2' ? pw : '');
+    body.set('TYPE' + n, nat ? 'nat' : 'bridge');
+    if (nat) {
+      body.set('ADDRESS' + n, addr);
+      body.set('INTERNET' + n, $('net' + n + '-internet').checked ? '1' : '0');
+      body.set('VIA' + n, $('net' + n + '-via-wg').checked ? 'wg' : 'wan');
+      body.set('REACH' + n, REACH.map(function (rr) { var c = $('net' + n + '-reach-' + rr[0]); return c && c.checked ? rr[0] : ''; }).filter(Boolean).join(','));
+    }
+    body.set('ISOLATE' + n, $('net' + n + '-isolate').checked ? '1' : '0');
+  }
+  body.set('DHCP1', $('net1-dhcp').checked ? '1' : '0');
+  if (rep && $('ethernet').value === 'net1' && bridged) return msg(out, 'Ethernet “part of network 1” needs network 1 as NAT and no bridged network.', 'bad');
+  if (!window.confirm('Save the Internet and network settings and restart the device?')) return;
+  $('apply').disabled = true;
   try {
-    var text = await post('/wifi_apply.html', body);
-    if (text !== 'OK') throw new Error(text.replace(/^ERROR:\s*/, '') || 'The device rejected these settings.');
+    var text = await post('/setup_apply.html', body, 5000);
+    if (text !== 'OK') throw new Error(text.replace(/^ERROR:\s*/, ''));
   } catch (err) {
-    if (err.name !== 'TimeoutError' && err.name !== 'TypeError') { msg(out, err.message, 'bad'); button.disabled = false; return; }
+    if (err.name !== 'TimeoutError' && err.name !== 'TypeError') { $('apply').disabled = false; return msg(out, err.message, 'bad'); }
   }
-  if (restart) { msg(out, 'Saved. Restarting… reconnect and reload this page in about one minute.', 'good'); button.disabled = false; return; }
-  var ok = false;
-  for (var i = 0; i < 25; i++) {
-    await delay(2000);
-    try {
-      var s = await fetchState();
-      if (s.revision >= expected && !s.busy) { state = s; ok = !s.error && s.saved; break; }
-    } catch (err) { /* Wi-Fi restarting */ }
-  }
-  $('password').value = ''; $('uplink-password').value = '';
-  renderStatus(); update();
-  msg(out, ok ? 'Saved and applied.' + (rep ? ' Check the uplink status above.' : '') : 'Could not confirm the change. Reconnect to the device network and reload this page.', ok ? 'good' : 'bad');
-  button.disabled = false;
+  $('uplink-password').value = '';
+  for (n = 1; n <= NET_MAX; n++) $('net' + n + '-password').value = '';
+  msg(out, 'Saved. Restarting… reconnect and reload this page in about one minute.', 'good');
+  $('apply').disabled = false;
 });
 
 adminForm.addEventListener('submit', async function (e) {
@@ -516,104 +547,6 @@ adminForm.addEventListener('submit', async function (e) {
     msg(out, pw ? 'Saved. Your browser will ask you to sign in with the new credentials.' : 'Saved. The admin password was removed.', 'good');
     await delay(1500); refresh();
   } catch (err) { msg(out, err.message || 'Could not save the credentials.', 'bad'); }
-});
-
-var NET_MAX = 7; /* 8 beacons on the radio, one kept for a Wi-Fi uplink */
-var REACH = [['device', 'This device'], ['lan', 'Network 1 / Ethernet']].concat([2, 3, 4, 5, 6, 7].map(function (n) { return ['net' + n, 'Network ' + n]; }), [['wg', 'WireGuard']]);
-(function () {
-  var list = $('net-list');
-  for (var n = 2; n <= NET_MAX; n++) {
-    var fs = document.createElement('fieldset'); fs.id = 'net' + n + '-box';
-    var lg = document.createElement('legend'); lg.textContent = 'Network ' + n; fs.appendChild(lg);
-    function add(el) { fs.appendChild(el); return el; }
-    function input(id, label, attrs) {
-      var l = document.createElement('label'); l.htmlFor = id; l.textContent = label; add(l);
-      var i = document.createElement('input'); i.id = id; Object.keys(attrs || {}).forEach(function (k) { i[k] = attrs[k]; }); return add(i);
-    }
-    function check(id, label) {
-      var l = document.createElement('label'); l.className = 'check';
-      var c = document.createElement('input'); c.type = 'checkbox'; c.id = id; l.appendChild(c); l.appendChild(document.createTextNode(' ' + label)); return add(l);
-    }
-    input('net' + n + '-ssid', 'Network name (SSID)', {maxLength: 32, spellcheck: false, autocomplete: 'off'});
-    var sl = document.createElement('label'); sl.htmlFor = 'net' + n + '-security'; sl.textContent = 'Security'; add(sl);
-    var sel = document.createElement('select'); sel.id = 'net' + n + '-security';
-    [['open', 'Open (no password)'], ['wpa2', 'WPA2-Personal (AES)']].forEach(function (o) { var op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; sel.appendChild(op); });
-    add(sel);
-    input('net' + n + '-password', 'Password', {type: 'password', maxLength: 63, autocomplete: 'new-password', placeholder: 'leave empty to keep the saved one'});
-    check('net' + n + '-routed', 'Routed: own address range and DHCP (router mode)');
-    input('net' + n + '-address', 'Address/prefix', {maxLength: 18, spellcheck: false, autocomplete: 'off', placeholder: '10.0.' + n + '.1/24'});
-    check('net' + n + '-internet', 'Internet access');
-    check('net' + n + '-via-wg', 'Internet through the WireGuard tunnel (DNS 1.1.1.1)');
-    var p = document.createElement('p'); p.className = 'hint'; p.textContent = 'May reach:'; add(p);
-    var box = document.createElement('div'); box.className = 'checks'; box.id = 'net' + n + '-reach'; add(box);
-    REACH.forEach(function (rr) {
-      if (rr[0] === 'net' + n) return;
-      var l = document.createElement('label'); l.className = 'check';
-      var c = document.createElement('input'); c.type = 'checkbox'; c.id = 'net' + n + '-reach-' + rr[0];
-      l.appendChild(c); l.appendChild(document.createTextNode(' ' + rr[1])); box.appendChild(l);
-    });
-    check('net' + n + '-isolate', 'Clients cannot see each other');
-    list.appendChild(fs);
-  }
-}());
-function netUpdate() {
-  var count = +$('net-count').value, router = state.mode === 'router';
-  for (var n = 2; n <= NET_MAX; n++) {
-    $('net' + n + '-box').hidden = n > count;
-    var routed = $('net' + n + '-routed').checked && router;
-    $('net' + n + '-routed').disabled = !router;
-    $('net' + n + '-address').disabled = !routed;
-    $('net' + n + '-internet').disabled = !routed;
-    $('net' + n + '-via-wg').disabled = !routed || !$('net' + n + '-internet').checked;
-    REACH.forEach(function (rr) { var c = $('net' + n + '-reach-' + rr[0]); if (c) c.disabled = !routed; });
-    $('net' + n + '-password').disabled = $('net' + n + '-security').value === 'open';
-  }
-}
-function fillNetworks() {
-  var nets = state.networks || [];
-  $('net-count').value = String(Math.max(1, nets.filter(function (x) { return x.enabled; }).length));
-  $('net1-isolate').checked = !!(nets[0] || {}).isolate;
-  for (var n = 2; n <= NET_MAX; n++) {
-    var x = nets[n - 1] || {};
-    $('net' + n + '-ssid').value = x.ssid || '';
-    $('net' + n + '-security').value = x.security === 'wpa2' ? 'wpa2' : 'open';
-    $('net' + n + '-routed').checked = !!x.address;
-    $('net' + n + '-address').value = x.address || '10.0.' + n + '.1/24';
-    $('net' + n + '-internet').checked = x.internet !== 0;
-    $('net' + n + '-via-wg').checked = x.via === 'wg';
-    var reach = (x.reach || '').split(',');
-    REACH.forEach(function (rr) { var c = $('net' + n + '-reach-' + rr[0]); if (c) c.checked = reach.indexOf(rr[0]) >= 0; });
-    $('net' + n + '-isolate').checked = !!x.isolate;
-  }
-  netUpdate();
-}
-$('networks-form').addEventListener('change', netUpdate);
-$('networks-form').addEventListener('submit', async function (e) {
-  e.preventDefault();
-  var out = $('networks-msg'), count = +$('net-count').value, body = new URLSearchParams();
-  body.set('COUNT', String(count));
-  body.set('ISOLATE1', $('net1-isolate').checked ? '1' : '0');
-  for (var n = 2; n <= count; n++) {
-    var x = (state.networks || [])[n - 1] || {}, ssid = $('net' + n + '-ssid').value, sec = $('net' + n + '-security').value, pw = $('net' + n + '-password').value;
-    var routed = $('net' + n + '-routed').checked && state.mode === 'router', addr = $('net' + n + '-address').value.trim();
-    if (!ssidOK(ssid)) return msg(out, 'Network ' + n + ': name must be 1–32 bytes.', 'bad');
-    if (sec === 'wpa2' && (pw ? !asciiKey(pw) : x.security !== 'wpa2')) return msg(out, 'Network ' + n + ': password of 8–63 ASCII characters.', 'bad');
-    if (routed && !/^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/.test(addr)) return msg(out, 'Network ' + n + ': address/prefix, for example 10.0.' + n + '.1/24.', 'bad');
-    body.set('SSID' + n, ssid); body.set('SECURITY' + n, sec); body.set('PASSWORD' + n, sec === 'wpa2' ? pw : '');
-    body.set('ADDRESS' + n, routed ? addr : '');
-    body.set('INTERNET' + n, $('net' + n + '-internet').checked ? '1' : '0');
-    body.set('VIA' + n, routed && $('net' + n + '-via-wg').checked ? 'wg' : 'wan');
-    body.set('REACH' + n, REACH.map(function (rr) { var c = $('net' + n + '-reach-' + rr[0]); return c && c.checked ? rr[0] : ''; }).filter(Boolean).join(','));
-    body.set('ISOLATE' + n, $('net' + n + '-isolate').checked ? '1' : '0');
-  }
-  if (!window.confirm('Save the Wi-Fi networks and restart the device?')) return;
-  try {
-    var text = await post('/networks_apply.html', body, 5000);
-    if (text !== 'OK') throw new Error(text.replace(/^ERROR:\s*/, ''));
-  } catch (err) {
-    if (err.name !== 'TimeoutError' && err.name !== 'TypeError') return msg(out, err.message, 'bad');
-  }
-  msg(out, 'Saved. Restarting… reload this page in about one minute.', 'good');
 });
 
 (function () {

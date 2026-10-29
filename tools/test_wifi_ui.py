@@ -36,16 +36,16 @@ class FormParser(HTMLParser):
         attrs = dict(attrs)
         if 'id' in attrs:
             self.ids.add(attrs['id'])
-        if tag == 'input' and attrs.get('name') == 'MODE':
+        if tag == 'input' and attrs.get('name') == 'UPLINK':
             self.modes.add(attrs.get('value'))
 
 page = (web / 'index.html').read_text()
 parser = FormParser()
 parser.feed(page)
 script = page[page.rindex('<script>'):]
-js_ids = {i for i in re.findall(r"\$\('([^']+)'\)", script) if not i.endswith('-')}
+js_ids = {i for i in re.findall(r"\$\('([^']+)'\)", script) if not i.endswith('-') and not re.match(r'net\d-', i)}  # netN-* are built by the script
 assert js_ids <= parser.ids, js_ids - parser.ids
-assert parser.modes == {'gateway', 'ap', 'repeater', 'router'}
+assert parser.modes == {'cable', 'wifi'}
 assert 'lang="en"' in page and not re.search('[\u3400-\u9fff]', page)
 assert 'href="/llms.txt"' in page and (web / 'llms.txt').is_file() and not (web / 'agent_api.txt').exists()
 assert '<title>MT7628KN Wi-Fi Extender</title>' in page and 'Smart Plug' not in page
@@ -57,7 +57,7 @@ assert '_KEY' not in reset, 'factory reset must erase the WireGuard device key, 
 llms = (web / 'llms.txt').read_text()
 assert '## API reference' in llms and 'agent_api' not in llms, 'one file for agents: guide and API reference'
 assert page.count('<%') == 1, 'only the state CGI tag may appear; webcomp parses <%'
-for endpoint in ('wifi_state', 'wifi_apply', 'wifi_scan', 'admin_apply', 'system_apply', 'wg_apply', 'startup_apply', 'networks_apply', 'firmware_apply'):
+for endpoint in ('wifi_state', 'wifi_apply', 'wifi_scan', 'admin_apply', 'system_apply', 'wg_apply', 'startup_apply', 'networks_apply', 'firmware_apply', 'setup_apply'):
     assert (web / f'{endpoint}.html').is_file(), endpoint
 assert not (web / 'factorySetting.html').exists()
 assert 'WG_KEY' not in source, 'the web interface must never read the WireGuard device private key'
