@@ -15,7 +15,14 @@
 
 static long vfile_read(void *b, size_t n);
 
-#define RET(r) ((r) < 0 ? -(long)(errno ? errno : EIO) : (long)(r))
+/* The call is evaluated exactly once: as a macro that used its argument
+ * twice, every socket(), connect() and write() ran twice (two sockets per
+ * socket() call leaked descriptors, each TLS record went out twice). */
+static long ret(long r)
+{
+	return r < 0 ? -(long)(errno ? errno : EIO) : r;
+}
+#define RET(r) ret((long)(r))
 
 long x_socket(int domain, int type, int proto)
 {
