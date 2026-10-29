@@ -370,6 +370,10 @@ void CGI_wifi_state(http_req *req)
         {
             extern int wifi_ui_open_fds(void);
             WEB_printf(req, ",\"open_fds\":%d", wifi_ui_open_fds());
+            {
+                extern const char *wg_ecos_wss_error(void);
+                WEB_printf(req, ",\"wss_error\":"); wifi_ui_json(req, wg_ecos_wss_error());
+            }
         }
     }
     {
