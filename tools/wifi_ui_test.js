@@ -30,15 +30,14 @@ function fixture(state, opts = {}) {
   const els = {};
   ids.forEach(id => els[id] = element(id));
   els['wifi-state'].textContent = JSON.stringify(state);
-  const radios = {ap: element('mode-ap'), repeater: element('mode-repeater'), router: element('mode-router')};
-  radios.ap.value = 'ap'; radios.repeater.value = 'repeater'; radios.router.value = 'router';
-  els['wifi-form'].querySelector = sel => {
-    if (sel === 'input[name=MODE]:checked') return ['ap', 'repeater', 'router'].map(k => radios[k]).find(r => r.checked) || radios.ap;
+  const radios = {cable: element('uplink-cable'), wifi: element('uplink-wifi')};
+  radios.cable.value = 'cable'; radios.wifi.value = 'wifi';
+  els['setup-form'].querySelector = sel => {
+    if (sel === 'input[name=UPLINK]:checked') return ['cable', 'wifi'].map(k => radios[k]).find(r => r.checked) || null;
     const m = /value=(\w+)/.exec(sel); return radios[m[1]];
   };
   const reg = c => { if (c.id) els[c.id] = c; (c.children || []).forEach(reg); return c; };
   els['net-list'].appendChild = reg;
-  els['wifi-form'].querySelectorAll = () => [els.apply];
   els['scan-table'].tBodies = [element('tbody')];
   els['startup-lines'].appendChild = c => { if (c.id) els[c.id] = c; return c; };
   const calls = [];
@@ -52,7 +51,6 @@ function fixture(state, opts = {}) {
       calls.push({url, options});
       if (url.startsWith('/wifi_scan.html')) return {async json() { return {error: '', raw: survey}; }};
       if (options.method === 'POST') {
-        if (url === '/wifi_apply.html') current = Object.assign({}, current, {revision: current.revision + 1, busy: 0, error: 0, saved: 1});
         return {async text() { return opts.reply || 'OK\n'; }};
       }
       return {async json() { return current; }};
@@ -62,43 +60,45 @@ function fixture(state, opts = {}) {
 }
 const base = {busy: 0, revision: 3, error: 0, saved: 1, mode: 'ap', ssid: 'Extender-A03E9C1D0E54', uplink: 'ECOSAPClient', channel: 6,
   security: 'WPA2PSK', device_security: 'open', admin_user: 'admin', admin_password_set: 0, telnet: 0, chip: 'MT7628KN', version: '1.0', build: 1700000000, uptime: 3700};
-const submit = f => f.els['wifi-form'].listeners.submit({preventDefault() {}});
+const submit = f => f.els['setup-form'].listeners.submit({preventDefault() {}});
 
 (async () => {
-  /* Initial render */
-  let f = fixture(base);
-  assert(f.radios.ap.checked && f.els['uplink-fields'].hidden);
+  /* Initial render: factory gateway (cable, network 1 NAT 192.168.11.1/24) */
+  const fnets = [{id: 1, enabled: 1, ssid: 'Extender-A03E9C1D0E54', security: 'open', isolate: 0, type: 'nat', address: '192.168.11.1/24', reach: 'device', internet: 1, via: 'wan'}]
+    .concat([2, 3, 4, 5, 6, 7].map(i => ({id: i, enabled: 0, ssid: '', security: 'open', isolate: 0, type: 'bridge', address: '', reach: '', internet: 1, via: 'wan'})));
+  const fbase = Object.assign({}, base, {mode: 'gateway', uplink_type: 'cable', ethernet: 'wan', lan: {address: '192.168.11.1/24', dhcp: 1}, wan_address: '192.168.1.221', networks: fnets});
+  let f = fixture(fbase);
+  assert(f.radios.cable.checked && f.els['uplink-fields'].hidden);
   assert.strictEqual(f.els.uplink.value, '', 'driver placeholder uplink is hidden');
-  assert(f.els['device-password-field'].hidden, 'open network hides password');
   assert(!f.els['admin-banner'].hidden && f.els['current-field'].hidden);
   assert(f.els['st-telnet'].textContent.startsWith('Disabled'));
   assert.strictEqual(f.els['st-uptime'].textContent, '1 h 1 min');
+  assert(f.els['st-mode'].textContent.includes('Ethernet cable (192.168.1.221)'));
+  assert(f.els['st-nets'].textContent.includes('NAT 192.168.11.1/24'));
+  assert.strictEqual(f.els['net-count'].value, '1'); assert(!f.els['net1-box'].hidden && f.els['net2-box'].hidden);
+  assert.strictEqual(f.els['net1-type'].value, 'nat'); assert(!f.els['net1-nat'].hidden && f.els['net1-dhcp'].checked);
+  assert(f.els['net1-reach-device'].checked && !f.els['net1-reach-net1'], 'a network does not list itself');
 
-  /* Open AP apply: always saves, sends open security and no password */
+  /* Cable + open network 1 NAT: one request to setup_apply */
   await submit(f);
   let p = f.posts()[0].options.body;
-  assert.strictEqual(f.posts()[0].url, '/wifi_apply.html');
-  assert.strictEqual(p.get('SAVE'), '1'); assert.strictEqual(p.get('DEVICE_SECURITY'), 'open'); assert.strictEqual(p.get('PASSWORD'), '');
-  assert(f.els['wifi-msg'].textContent.startsWith('Saved and applied'));
+  assert.strictEqual(f.posts()[0].url, '/setup_apply.html');
+  assert.strictEqual(p.get('UPLINK'), 'cable'); assert.strictEqual(p.get('COUNT'), '1'); assert.strictEqual(p.get('TYPE1'), 'nat');
+  assert.strictEqual(p.get('ADDRESS1'), '192.168.11.1/24'); assert.strictEqual(p.get('SECURITY1'), 'open'); assert.strictEqual(p.get('PASSWORD1'), '');
+  assert.strictEqual(p.get('REACH1'), 'device'); assert.strictEqual(p.get('DHCP1'), '1'); assert(!p.has('UPLINK_SSID'));
+  assert(f.els['setup-msg'].textContent.includes('Restarting'));
 
-  /* Switching an open network to WPA2 requires a password */
-  f = fixture(base); f.els['device-security'].value = 'wpa2'; f.els['wifi-form'].listeners.change();
-  assert(!f.els['device-password-field'].hidden);
-  await submit(f); assert.strictEqual(f.posts().length, 0); assert(f.els['wifi-msg'].textContent.includes('8–63'));
-  f.els.password.value = 'short'; await submit(f); assert.strictEqual(f.posts().length, 0);
-  f.els.password.value = 'device-pass-1'; await submit(f); assert.strictEqual(f.posts()[0].options.body.get('PASSWORD'), 'device-pass-1');
-  assert.strictEqual(f.els.password.value, '', 'password field cleared');
+  /* WPA2 needs a password; UTF-8 length; NAT needs an address */
+  f = fixture(fbase); f.els['net1-security'].value = 'wpa2'; f.els['setup-form'].listeners.change();
+  await submit(f); assert.strictEqual(f.posts().length, 0); assert(f.els['setup-msg'].textContent.includes('8–63'));
+  f.els['net1-password'].value = 'short'; await submit(f); assert.strictEqual(f.posts().length, 0);
+  f.els['net1-password'].value = '12345678'; await submit(f); assert.strictEqual(f.posts()[0].options.body.get('PASSWORD1'), '12345678');
+  assert.strictEqual(f.els['net1-password'].value, '', 'password field cleared');
+  f = fixture(fbase); f.els['net1-ssid'].value = 'é'.repeat(17); await submit(f); assert.strictEqual(f.posts().length, 0);
+  f = fixture(fbase); f.els['net1-address'].value = '10.0.1.1'; await submit(f); assert.strictEqual(f.posts().length, 0); assert(f.els['setup-msg'].textContent.includes('address/prefix'));
 
-  /* WPA2 network: empty password keeps the current one */
-  f = fixture(Object.assign({}, base, {device_security: 'wpa2'}));
-  await submit(f); p = f.posts()[0].options.body;
-  assert.strictEqual(p.get('DEVICE_SECURITY'), 'wpa2'); assert.strictEqual(p.get('PASSWORD'), '');
-
-  /* UTF-8 length check */
-  f = fixture(base); f.els.ssid.value = 'é'.repeat(17); await submit(f); assert.strictEqual(f.posts().length, 0);
-
-  /* Repeater: scan, parse and choose */
-  f = fixture(base); f.radios.ap.checked = false; f.radios.repeater.checked = true; f.els['wifi-form'].listeners.change();
+  /* Wi-Fi uplink: scan, parse and choose */
+  f = fixture(fbase); f.radios.cable.checked = false; f.radios.wifi.checked = true; f.els['setup-form'].listeners.change();
   assert(!f.els['uplink-fields'].hidden && f.els.channel.disabled);
   await f.els.scan.listeners.click.call(f.els.scan);
   const rows = f.els['scan-table'].tBodies[0].children;
@@ -113,19 +113,27 @@ const submit = f => f.els['wifi-form'].listeners.submit({preventDefault() {}});
   rows[1].listeners.click(); assert(f.els['scan-msg'].className.includes('bad'), 'WPA3 is unsupported');
   rows[2].listeners.click(); assert.strictEqual(f.els['uplink-security'].value, 'open'); assert(f.els['uplink-password'].disabled);
 
-  /* Repeater apply: new uplink needs its password */
+  /* Wi-Fi uplink apply: new uplink needs its password; network 2 as bridge */
   rows[0].listeners.click();
-  await submit(f); assert.strictEqual(f.posts().length, 0); assert(f.els['wifi-msg'].textContent.includes('uplink password'));
-  f.els['uplink-password'].value = 'uplink-pass-1'; await submit(f);
+  await submit(f); assert.strictEqual(f.posts().length, 0); assert(f.els['setup-msg'].textContent.includes('uplink password'));
+  f.els['uplink-password'].value = 'uplink-pass-1'; f.els['uplink-bssid'].value = 'bad'; await submit(f); assert.strictEqual(f.posts().length, 0);
+  f.els['uplink-bssid'].value = '28:ee:52:37:d2:71';
+  f.els['net-count'].value = '2'; f.els['setup-form'].listeners.change(); assert(!f.els['net2-box'].hidden);
+  f.els['net2-ssid'].value = 'house'; f.els['net2-security'].value = 'open'; f.els['net2-type'].value = 'bridge'; f.els['setup-form'].listeners.change();
+  assert(f.els['net2-nat'].hidden, 'bridge hides NAT settings');
+  await submit(f); assert.strictEqual(f.posts().length, 0, 'Ethernet in network 1 with a bridged network is refused'); assert(f.els['setup-msg'].textContent.includes('Ethernet'));
+  f.els.ethernet.value = 'internet'; await submit(f);
   p = f.posts()[0].options.body;
-  assert.strictEqual(p.get('MODE'), 'repeater'); assert.strictEqual(p.get('UPLINK_SSID'), 'ALMEIDA'); assert.strictEqual(p.get('UPLINK_SECURITY'), 'wpa2');
-  assert.strictEqual(p.get('UPLINK_PASSWORD'), 'uplink-pass-1'); assert.strictEqual(p.get('CHANNEL'), '6');
+  assert.strictEqual(p.get('UPLINK'), 'wifi'); assert.strictEqual(p.get('UPLINK_SSID'), 'ALMEIDA'); assert.strictEqual(p.get('UPLINK_SECURITY'), 'wpa2');
+  assert.strictEqual(p.get('UPLINK_PASSWORD'), 'uplink-pass-1'); assert.strictEqual(p.get('CHANNEL'), '6'); assert.strictEqual(p.get('UPLINK_BSSID'), '28:ee:52:37:d2:71');
+  assert.strictEqual(p.get('ETHERNET'), 'internet'); assert.strictEqual(p.get('COUNT'), '2'); assert.strictEqual(p.get('TYPE2'), 'bridge'); assert(!p.has('ADDRESS2'));
 
-  /* Same uplink: empty password keeps the stored one */
-  f = fixture(Object.assign({}, base, {mode: 'repeater', uplink: 'Home', uplink_status: 'disconnected'}));
-  assert(f.els['st-uplink'].className === 'bad' && f.els['st-uplink'].textContent.includes('not connected'));
+  /* Same uplink: empty password keeps the stored one; uplink status */
+  const wbase = Object.assign({}, fbase, {mode: 'router', uplink_type: 'wifi', ethernet: 'net1', uplink: 'Home', uplink_status: 'disconnected'});
+  f = fixture(wbase);
+  assert(f.radios.wifi.checked && f.els['st-uplink'].className === 'bad' && f.els['st-uplink'].textContent.includes('not connected'));
   await submit(f); assert.strictEqual(f.posts().length, 1); assert.strictEqual(f.posts()[0].options.body.get('UPLINK_PASSWORD'), '');
-  f = fixture(Object.assign({}, base, {mode: 'repeater', uplink: 'Home', uplink_status: 'connected'}));
+  f = fixture(Object.assign({}, wbase, {uplink_status: 'connected'}));
   assert.strictEqual(f.els['st-uplink'].className, 'ok');
 
   /* Administration */
@@ -163,53 +171,33 @@ const submit = f => f.els['wifi-form'].listeners.submit({preventDefault() {}});
   f = fixture(withWg({enabled: 1, state: 'connected', status: 'Connected to 164.163.10.88:51820', handshake_age: 12, rx_bytes: 2048, tx_bytes: 512}));
   assert.strictEqual(f.els['st-wg'].className, 'ok'); assert(f.els['st-wg'].textContent.includes('handshake 12 s ago')); assert(f.els['st-wg'].textContent.includes('2.0 KB'));
 
-  /* Tabs */
-  f = fixture(base);
-  assert(!f.els['tab-status'].hidden && f.els['tab-wireless'].hidden && f.els['tab-system'].hidden);
-  f = fixture(base, {hash: '#vpn'}); assert(!f.els['tab-vpn'].hidden && f.els['tab-status'].hidden);
-  f = fixture(base, {hash: '#admin'}); assert(!f.els['tab-system'].hidden && !f.els['tab-system2'].hidden);
+  /* Tabs (old #wireless / #networks links open the Network tab) */
+  f = fixture(fbase);
+  assert(!f.els['tab-status'].hidden && f.els['tab-network'].hidden && f.els['tab-system'].hidden);
+  f = fixture(fbase, {hash: '#vpn'}); assert(!f.els['tab-vpn'].hidden && f.els['tab-status'].hidden);
+  f = fixture(fbase, {hash: '#admin'}); assert(!f.els['tab-system'].hidden && !f.els['tab-system2'].hidden);
+  f = fixture(fbase, {hash: '#networks'}); assert(!f.els['tab-network'].hidden);
 
-  /* Router mode */
-  f = fixture(base); f.radios.ap.checked = false; f.radios.router.checked = true; f.els['wifi-form'].listeners.change();
-  assert(!f.els['router-fields'].hidden && !f.els['uplink-fields'].hidden && f.els.channel.disabled);
-  f.els.uplink.value = 'Home'; f.els['uplink-password'].value = 'uplink-pass-1'; f.els['lan-address'].value = '10.0.9.1';
-  await submit(f); assert.strictEqual(f.posts().length, 0); assert(f.els['wifi-msg'].textContent.includes('IPv4/prefix'));
-  f.els['lan-address'].value = '10.0.9.1/24'; f.els['uplink-bssid'].value = 'bad'; await submit(f); assert.strictEqual(f.posts().length, 0);
-  f.els['uplink-bssid'].value = '28:ee:52:37:d2:71'; f.els['lan-dhcp'].checked = false; await submit(f);
-  p = f.posts()[0].options.body;
-  assert.strictEqual(p.get('MODE'), 'router'); assert.strictEqual(p.get('LAN_ADDRESS'), '10.0.9.1/24'); assert.strictEqual(p.get('LAN_DHCP'), '0'); assert.strictEqual(p.get('UPLINK_BSSID'), '28:ee:52:37:d2:71');
-  assert(f.els['wifi-msg'].textContent.includes('Restarting')); assert.strictEqual(f.posts().length, 1, 'no state polling during restart');
-  f = fixture(Object.assign({}, base, {mode: 'router', uplink: 'Home', lan: {address: '10.0.1.1/24', dhcp: 1}}));
-  assert(f.radios.router.checked && f.els['st-mode'].textContent.includes('router') && f.els['lan-address'].value === '10.0.1.1/24');
-
-  /* Networks */
-  const nets = [{id: 1, enabled: 1, ssid: 'Extender-A', security: 'open', isolate: 0},
-                {id: 2, enabled: 1, ssid: 'guest', security: 'open', isolate: 1, address: '10.0.2.1/24', reach: '', internet: 1},
-                {id: 3, enabled: 0, ssid: '', security: 'open', isolate: 0, address: '', reach: '', internet: 1},
-                {id: 4, enabled: 0, ssid: '', security: 'open', isolate: 0, address: '', reach: '', internet: 1}];
-  f = fixture(Object.assign({}, base, {mode: 'router', lan: {address: '10.0.1.1/24', dhcp: 1}, networks: nets}));
+  /* Several NAT networks: reach, Internet, WireGuard */
+  const nets = fnets.map(x => Object.assign({}, x));
+  nets[1] = {id: 2, enabled: 1, ssid: 'guest', security: 'open', isolate: 1, type: 'nat', address: '10.0.2.1/24', reach: '', internet: 1, via: 'wan'};
+  f = fixture(Object.assign({}, wbase, {networks: nets}));
   assert.strictEqual(f.els['net-count'].value, '2'); assert(!f.els['net2-box'].hidden && f.els['net3-box'].hidden);
-  assert.strictEqual(f.els['net2-ssid'].value, 'guest'); assert(f.els['net2-routed'].checked && f.els['net2-isolate'].checked);
-  assert(!f.els['net2-reach-net2'], 'a network does not list itself'); assert(f.els['net2-reach-lan'] && !f.els['net2-reach-lan'].checked);
-  assert(f.els['st-nets'].textContent.includes('guest (10.0.2.1/24)'));
-  const ns = f.els['networks-form'].listeners.submit;
-  f.els['net-count'].value = '3'; f.els['networks-form'].listeners.change(); assert(!f.els['net3-box'].hidden);
+  assert.strictEqual(f.els['net2-ssid'].value, 'guest'); assert(f.els['net2-type'].value === 'nat' && f.els['net2-isolate'].checked);
+  assert(f.els['net2-reach-net1'] && !f.els['net2-reach-net1'].checked);
+  assert(f.els['st-nets'].textContent.includes('guest (NAT 10.0.2.1/24)'));
+  f.els['net-count'].value = '3'; f.els['setup-form'].listeners.change(); assert(!f.els['net3-box'].hidden);
   f.els['net3-ssid'].value = 'iot'; f.els['net3-security'].value = 'wpa2';
-  await ns({preventDefault() {}}); assert.strictEqual(f.posts().length, 0); assert(f.els['networks-msg'].textContent.includes('Network 3'));
-  f.els['net3-password'].value = 'iot-pass-123'; f.els['net3-routed'].checked = true; f.els['net3-address'].value = '10.0.3.1/24';
-  f.els['net3-reach-lan'].checked = true; f.els['net3-reach-net2'].checked = true; f.els['net3-internet'].checked = false;
+  await submit(f); assert.strictEqual(f.posts().length, 0); assert(f.els['setup-msg'].textContent.includes('Network 3'));
+  f.els['net3-password'].value = 'iot-pass-123'; f.els['net3-type'].value = 'nat'; f.els['net3-address'].value = '10.0.3.1/24';
+  f.els['net3-reach-net1'].checked = true; f.els['net3-reach-net2'].checked = true; f.els['net3-internet'].checked = false;
   f.els['net2-via-wg'].checked = true;
-  await ns({preventDefault() {}});
-  p = f.posts()[0]; assert.strictEqual(p.url, '/networks_apply.html');
-  const b = p.options.body;
+  await submit(f);
+  const b = f.posts()[0].options.body;
   assert.strictEqual(b.get('COUNT'), '3'); assert.strictEqual(b.get('SSID2'), 'guest'); assert.strictEqual(b.get('ADDRESS2'), '10.0.2.1/24'); assert.strictEqual(b.get('ISOLATE2'), '1');
   assert.strictEqual(b.get('SECURITY3'), 'wpa2'); assert.strictEqual(b.get('PASSWORD3'), 'iot-pass-123'); assert.strictEqual(b.get('ADDRESS3'), '10.0.3.1/24');
-  assert.strictEqual(b.get('REACH3'), 'lan,net2'); assert.strictEqual(b.get('INTERNET3'), '0'); assert(!b.has('SSID4'));
-  assert.strictEqual(b.get('VIA2'), 'wg'); assert.strictEqual(b.get('VIA3'), 'wan');
-  /* bridge mode: no routed networks */
-  f = fixture(Object.assign({}, base, {networks: nets}));
-  assert(f.els['net2-routed'].disabled && f.els['net2-address'].disabled);
-  await f.els['networks-form'].listeners.submit({preventDefault() {}}); assert.strictEqual(f.posts()[0].options.body.get('ADDRESS2'), '');
+  assert.strictEqual(b.get('REACH3'), 'net1,net2'); assert.strictEqual(b.get('INTERNET3'), '0'); assert(!b.has('SSID4'));
+  assert.strictEqual(b.get('VIA2'), 'wg'); assert.strictEqual(b.get('VIA3'), 'wan'); assert.strictEqual(b.get('ETHERNET'), 'net1');
 
   /* Startup script */
   f = fixture(Object.assign({}, base, {startup: [{command: 'net route add a b c', result: 'ok'}, {command: 'bogus', result: 'unknown command'}].concat(Array(6).fill({command: '', result: ''}))}));
@@ -235,5 +223,5 @@ const submit = f => f.els['wifi-form'].listeners.submit({preventDefault() {}});
   f = fixture(base); await f.els.factory.listeners.click(); assert.strictEqual(f.posts()[0].options.body.get('ACTION'), 'factory');
   f = fixture(base); await f.els.reboot.listeners.click(); assert.strictEqual(f.posts()[0].options.body.get('ACTION'), 'reboot');
 
-  console.log('PASS: status rendering, scan parsing and selection, tabs, Wi-Fi (AP/repeater/router), networks, admin, WireGuard and startup script validation, POST fields, system actions');
+  console.log('PASS: status rendering, scan parsing and selection, tabs, Internet (cable/Wi-Fi) and networks (NAT/bridge) setup, admin, WireGuard and startup script validation, POST fields, system actions');
 })().catch(e => { console.error(e); process.exitCode = 1; });

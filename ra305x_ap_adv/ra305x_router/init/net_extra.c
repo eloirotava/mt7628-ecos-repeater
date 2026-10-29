@@ -272,6 +272,10 @@ void net_extra_fw_rules(void (*set)(char *))
 		internet[i] = strcmp(val, "0") != 0;
 		via_wg[i] = net_extra_via_wg(num[i]);
 	}
+	/* "net1" names the LAN when network 1 is the main LAN (not routed here) */
+	for (i = 0; i < count; i++)
+		if (!net_extra_routed(1, 0, 0) && has(reach[i], "net1") && !has(reach[i], "lan") && strlen(reach[i]) + 5 < sizeof reach[i])
+			strcat(reach[i], reach[i][0] ? ",lan" : "lan");
 	if (count) diag_printf("net: isolation rules for %d routed network(s)\n", count);
 	for (i = 0; i < count; i++) {
 		const char *x = names[i];

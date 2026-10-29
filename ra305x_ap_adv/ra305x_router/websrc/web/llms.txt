@@ -24,32 +24,27 @@ Ask the owner before changing connectivity, credentials, restarting or writing f
 
 ## Set up from factory defaults
 
-Do these in order. After each POST, check the response is OK; for Wi-Fi changes poll GET /wifi_state.html every 2 seconds until busy=0, revision increased, error=0 and saved=1.
+Do these in order. After each POST, check the response is OK.
 
-1. Inspect: GET /wifi_state.html. Note mode, ssid, device_security, admin_password_set.
+1. Inspect: GET /wifi_state.html. Note uplink_type, ethernet, networks[], admin_password_set.
 2. Secure administration first: POST /admin_apply.html USER=admin&PASSWORD=<new>&CONFIRM=<new>&CURRENT= . Then use HTTP Basic authentication with these credentials on every later request (except /llms.txt).
-3. Choose the uplink:
-   - Ethernet, own network (router, the factory mode): MODE=gateway; clients are on the device's own network behind NAT.
-   - Ethernet, same network as the router (access point): MODE=ap; clients get addresses from the router and see the rest of the network.
-   - Wi-Fi (repeater): unplug the Ethernet cable first (a cable to the same network plus a wireless uplink makes a bridge loop). GET /wifi_scan.html, pick the network, and use its channel and security (WPA2PSK/AES = wpa2, WPA1PSKWPA2PSK/... = mixed, NONE = open; WPA3/SAE and enterprise are unsupported).
-4. Secure the device network and apply, in one request:
-   - Ethernet router: POST /wifi_apply.html MODE=gateway&SSID=<name>&DEVICE_SECURITY=wpa2&PASSWORD=<8-63 chars>&CHANNEL=<1-13>&LAN_ADDRESS=192.168.11.1/24&LAN_DHCP=1 . The device restarts (about one minute); reconnect to the new SSID.
-   - Access point: POST /wifi_apply.html MODE=ap&SSID=<name>&DEVICE_SECURITY=wpa2&PASSWORD=<8-63 chars>&CHANNEL=<1-13>
-   - Repeater: POST /wifi_apply.html MODE=repeater&SSID=<name>&DEVICE_SECURITY=wpa2&PASSWORD=<8-63 chars>&CHANNEL=<uplink channel>&UPLINK_SSID=<network>&UPLINK_SECURITY=<wpa2|mixed|open>&UPLINK_PASSWORD=<password>
-   Wi-Fi restarts; if you are connected over Wi-Fi, reconnect to the new SSID with the new password. The DHCP address may change.
-5. Verify: GET /wifi_state.html shows the new mode and ssid, device_security=wpa2, admin_password_set=1 and telnet=1. In repeater mode uplink_status must be "connected"; "disconnected" usually means a wrong uplink password or channel, and the device network stays up so you can correct it. Finally test traffic (for example a web request) from a client on the device network.
+3. Choose where the Internet comes from and what each Wi-Fi network is, and apply everything with one POST /setup_apply.html (see "Internet and networks" in the API reference). The device restarts (about one minute).
+   - Internet: UPLINK=cable (the Ethernet cable goes to the router or modem) or UPLINK=wifi (GET /wifi_scan.html, pick the network; use its channel as CHANNEL and its security: WPA2PSK/AES = wpa2, WPA1PSKWPA2PSK/... = mixed, NONE = open; WPA3/SAE and enterprise are unsupported).
+   - Each network n (1..COUNT, up to 7; network 1 always exists) is TYPEn=nat (its own range ADDRESSn with DHCP, behind this device) or TYPEn=bridge (clients join the Internet side's network and get addresses from its router).
+   Examples (password 12345678 is only an example):
+   - Cable, one NAT network (the factory layout): UPLINK=cable&CHANNEL=6&COUNT=1&SSID1=Home&SECURITY1=wpa2&PASSWORD1=12345678&TYPE1=nat&ADDRESS1=192.168.11.1/24&REACH1=device
+   - Cable, extend the existing network (access point): UPLINK=cable&CHANNEL=6&COUNT=1&SSID1=Home&SECURITY1=wpa2&PASSWORD1=12345678&TYPE1=bridge
+   - Wi-Fi uplink, own NAT network: UPLINK=wifi&UPLINK_SSID=<network>&UPLINK_SECURITY=wpa2&UPLINK_PASSWORD=<password>&CHANNEL=<uplink channel>&ETHERNET=net1&COUNT=1&SSID1=Home&SECURITY1=wpa2&PASSWORD1=12345678&TYPE1=nat&ADDRESS1=10.0.1.1/24&REACH1=device
+   - Wi-Fi uplink, repeat the network (repeater): as above with TYPE1=bridge&ETHERNET=internet . With a Wi-Fi uplink and a bridged network, unplug any Ethernet cable to the same network first (it would make a loop).
+   - Mixed: networks may be NAT and bridge at the same time, for example a bridged network for the house and a NAT guest network: ...&COUNT=2&TYPE1=bridge&SSID2=Guest&SECURITY2=wpa2&PASSWORD2=12345678&TYPE2=nat&ADDRESS2=10.0.2.1/24&ISOLATE2=1
+4. Reconnect. A NAT network hands out addresses by DHCP and the device is at its ADDRESSn host (for example http://192.168.11.1/). In a bridged network the device has an address from the upstream router (find its MAC in the router's leases) and also answers at http://192.168.11.1/ from a client set to a static 192.168.11.x address.
+5. Verify: GET /wifi_state.html shows uplink_type, ethernet, networks[] with the types and addresses you set, admin_password_set=1 and, when network 1 uses WPA2, telnet=1. With a Wi-Fi uplink, uplink_status must be "connected"; "disconnected" usually means a wrong uplink password or channel. Finally test traffic (for example a web request) from a client on each network.
 
-Telnet (TCP 23, same admin credentials) becomes available only after steps 2 and 4. It is for diagnostics and firmware installation; see Firmware tests and recovery below.
+DHCP and cables: a NAT network 1 with DHCP1=1 also hands out addresses on the Ethernet port when ETHERNET=net1. If that port is cabled to an existing network (for example the home LAN), use DHCP1=0 or ETHERNET=internet: otherwise the device becomes a second DHCP server there. Ask the owner if unsure.
 
-## Optional: router mode and extra Wi-Fi networks
+Telnet (TCP 23, same admin credentials) becomes available only with an admin password and network 1 on WPA2. It is for diagnostics and firmware installation; see Firmware tests and recovery below.
 
-Router mode takes the Internet from an existing 2.4 GHz network (WAN over Wi-Fi) and runs the device's own network behind NAT; the Ethernet port joins it.
-1. POST /wifi_apply.html MODE=router&SSID=..&DEVICE_SECURITY=..&PASSWORD=..&CHANNEL=<uplink channel>&UPLINK_SSID=..&UPLINK_SECURITY=..&UPLINK_PASSWORD=..&LAN_ADDRESS=10.0.1.1/24&LAN_DHCP=<1|0> (optional UPLINK_BSSID=aa:bb:cc:dd:ee:ff when several access points share the uplink name). The device restarts; afterwards it is at the LAN_ADDRESS host (and at 192.168.11.1 on the Ethernet port, and over WireGuard if configured). The radio follows the uplink's channel.
-   LAN_DHCP: use 1 only when nothing else on the Ethernet side runs a DHCP server. If the Ethernet port is cabled to an existing network (for example the home LAN), use LAN_DHCP=0: otherwise the device becomes a second DHCP server on that network and hands out wrong gateways. Ask the owner if unsure.
-2. If any network will use VIAn=wg, set up WireGuard first (section below) and confirm it is connected.
-3. Extra networks: POST /networks_apply.html COUNT=<1-7> and, for each network n = 2..COUNT, SSIDn, SECURITYn (open|wpa2), PASSWORDn, ADDRESSn (e.g. 10.0.2.1/24 to route it with its own DHCP; empty to bridge it with network 1), INTERNETn (1|0), REACHn (comma list of device, lan, net2 ... net7, wg; empty = Internet only), ISOLATEn (1 = clients cannot see each other), VIAn (wan, or wg to send that network's Internet traffic through the WireGuard tunnel; its DHCP then offers DNS 1.1.1.1). The device restarts.
-   Typical guest network: ADDRESSn=10.0.2.1/24&INTERNETn=1&REACHn=&ISOLATEn=1. Typical IoT network that the home network can reach but not the other way round: ADDRESSn=10.0.3.1/24&REACHn= (connections from network 1 into it are allowed; replies follow).
-4. Verify with GET /wifi_state.html: mode "router", lan.address, networks[] (ssid, enabled, address, reach, internet, isolate), then join each network from a client and check its address and Internet access.
+If any network will use VIAn=wg, set up WireGuard first (section below) and confirm it is connected.
 
 ## Optional: WireGuard
 
@@ -80,13 +75,14 @@ Requests that change settings use POST with application/x-www-form-urlencoded fi
 
 GET /wifi_state.html returns JSON:
 - busy (0 or 1), revision (apply counter), error (0 on success; -3 means saving failed), stage, saved (1 when the last apply was written and verified in flash).
-- mode (gateway, ap, repeater or router), ssid (device network), device_security (open or wpa2), channel.
+- uplink_type (cable or wifi), ethernet (wan: the cable is the Internet; net1: the port is part of network 1; internet: the port is bridged with the Internet side).
+- mode (gateway, ap, repeater or router: the underlying mode of the older endpoints), ssid (device network), device_security (open or wpa2), channel.
 - uplink (uplink SSID in repeater and router modes), security (uplink driver authentication name), uplink_status (repeater only: driver connection text, for example "Connected" or "Disconnected").
 - admin_user, admin_password_set (0 or 1), telnet (1 when Telnet logins are accepted).
 - chip, version, build (UNIX time), uptime (seconds).
 - firmware: busy, state and error of the last firmware check, test or installation.
 - lan (router and gateway modes): address (IPv4/prefix), dhcp (0 or 1). wan_address (gateway mode): the address the Ethernet uplink got by DHCP, empty until it has one.
-- networks: seven objects (id 1-7) with enabled, ssid, security (open or wpa2), isolate (0 or 1), and for ids 2-7 address (empty when bridged), reach, internet and via (wan or wg).
+- networks: seven objects (id 1-7) with enabled, ssid, security (open or wpa2), isolate (0 or 1), type (nat or bridge), address (the NAT range, empty for bridge), reach, internet and via (wan or wg).
 - wireguard: enabled, address (tunnel address/prefix), peer_public_key, endpoint, port, keepalive, preshared_key_set, public_key (this device, base64; new after every factory reset), state (off, starting, clock, handshake, connected or error), status, handshake_age (seconds, -1 before the first), rx_bytes and tx_bytes.
 
 Passwords are never returned.
@@ -94,6 +90,19 @@ Passwords are never returned.
 ### Scan for networks
 
 GET /wifi_scan.html runs a site survey (about 3 seconds) and returns JSON {"error": "", "raw": "<driver table>"}. error is "busy" while settings are being applied. raw is a fixed-width table whose header line starts with "Ch  SSID  BSSID  Security  Siganl(%)W-Mode"; locate columns by the header positions. SSIDs with non-ASCII bytes appear as 0x followed by hex (decode as UTF-8). Empty SSIDs are hidden networks. Security values such as WPA2PSK/AES map to wpa2, WPA1PSKWPA2PSK/TKIPAES to mixed and NONE to open; WPA3/SAE and enterprise networks are unsupported.
+
+### Internet and networks
+
+POST /setup_apply.html sets everything in one request; the device saves and restarts. Fields:
+- UPLINK: cable or wifi. CHANNEL: 1-13 (with a Wi-Fi uplink, the uplink's channel; all networks share it).
+- Wi-Fi uplink: UPLINK_SSID (1-32 bytes), UPLINK_SECURITY (wpa2, mixed or open), UPLINK_PASSWORD (8-63 ASCII; empty keeps the stored one for the same SSID), UPLINK_BSSID (optional aa:bb:cc:dd:ee:ff), ETHERNET (net1: the port is part of network 1, needs network 1 as NAT and no bridged network; internet: the port is bridged with the Internet side).
+- COUNT: 1-7 networks (the radio has 8 beacons and a Wi-Fi uplink uses one).
+- For each n from 1 to COUNT: SSIDn (1-32 bytes); SECURITYn (open or wpa2); PASSWORDn (8-63 ASCII; empty keeps the stored key when the network already used WPA2); TYPEn (nat or bridge); ISOLATEn (1: clients cannot see each other).
+- For NAT networks: ADDRESSn (IPv4/prefix 8-30, the device's address; DHCP hands out .100-.199); INTERNETn (1 default, or 0); REACHn (comma list of what the network may open connections to: device, net1 ... net7, lan (the local network on the Internet side), wg; empty: only the Internet); VIAn (wan default, or wg: Internet through the WireGuard tunnel, dropped if the tunnel is down; DNS offered is 1.1.1.1).
+- DHCP1: 1 (default) or 0, for network 1 when it is NAT and no network is bridged.
+Ranges overlapping each other or the WireGuard network are refused. Others can always open connections into a NAT network and get replies; use REACH on the other side to allow the reverse. Invalid fields are rejected before anything changes.
+
+The endpoints below (/wifi_apply.html, /networks_apply.html) are older shortcuts for the same settings and keep working.
 
 ### Apply Wi-Fi settings
 
