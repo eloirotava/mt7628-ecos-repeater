@@ -7432,6 +7432,19 @@ static void net_state(http_req *req)
         WEB_printf(req, ",\"uplink_type\":\"%s\",\"ethernet\":\"%s\"", atoi(val) ? "wifi" : "cable",
                    op == 1 ? "wan" : op == 2 ? "net1" : "internet");
     }
+    {
+        /* layout: nat (every active network NAT), bridge (all bridged) or mixed */
+        int nat = 0, br = 0, op;
+        char v2[64];
+        v2[0] = 0; CFG_get_str(CFG_SYS_OPMODE, v2); op = atoi(v2);
+        for (n = 0; n < count && n < NET_MAX; n++) {
+            v2[0] = 0;
+            if (n == 0) { if (op == 1 || op == 2) v2[0] = 'x'; else CFG_get_str(CFG_SYS_NET1_IP, v2); }
+            else CFG_get_str(net_ip_ids[n - 1], v2);
+            if (v2[0]) nat++; else br++;
+        }
+        WEB_printf(req, ",\"layout\":\"%s\"", !br ? "nat" : !nat ? "bridge" : "mixed");
+    }
     WEB_printf(req, ",\"networks\":[");
     for (n = 0; n < NET_MAX; n++) {
         val[0] = 0; CFG_get_str(net_ssid_ids[n], val);

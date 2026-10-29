@@ -153,7 +153,7 @@ int main(void) {
  assert(!strcmp(cfg[CFG_SYS_OPMODE],"1"));assert(!strcmp(cfg[CFG_LAN_IP_MODE],"1"));assert(!strcmp(cfg[CFG_LAN_IP],"192.168.11.1"));assert(!strcmp(cfg[CFG_WAN_IP_MODE],"2"));
  assert(!strcmp(cfg[CFG_LAN_DHCPD_EN],"1"));assert(!strcmp(cfg[CFG_LAN_DHCPD_START],"192.168.11.100"));assert(!strcmp(cfg[CFG_WLN_ApCliEnable],"0"));
  setup("ap");strcpy(cfg[CFG_SYS_OPMODE],"1");strcpy(cfg[CFG_LAN_IP],"192.168.11.1");strcpy(cfg[CFG_LAN_MSK],"255.255.255.0");SYS_wan_ip=inet_addr("192.168.1.219");CGI_wifi_state(&post);
- assert(strstr(output,"\"mode\":\"gateway\""));assert(strstr(output,"\"lan\":{\"address\":\"192.168.11.1/24\""));assert(strstr(output,"\"wan_address\":\"192.168.1.219\""));SYS_wan_ip=0;
+ assert(strstr(output,"\"mode\":\"gateway\""));assert(strstr(output,"\"lan\":{\"address\":\"192.168.11.1/24\""));assert(strstr(output,"\"wan_address\":\"192.168.1.219\""));assert(strstr(output,"\"layout\":\"nat\""));SYS_wan_ip=0;
  setup("ap");strcpy(cfg[CFG_SYS_OPMODE],"1");CGI_wifi_apply(&post);assert(!strcmp(output,"OK"));assert(reboots==1);assert(!strcmp(cfg[CFG_SYS_OPMODE],"3"));
  puts("PASS: gateway mode (Ethernet WAN, own network, restart on change, state)");
  /* Router (WISP) mode */

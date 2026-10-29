@@ -76,7 +76,7 @@ Requests that change settings use POST with application/x-www-form-urlencoded fi
 
 GET /wifi_state.html returns JSON:
 - busy (0 or 1), revision (apply counter), error (0 on success; -3 means saving failed), stage, saved (1 when the last apply was written and verified in flash).
-- uplink_type (cable or wifi), ethernet (wan: the cable is the Internet; net1: the port is part of network 1; internet: the port is bridged with the Internet side).
+- layout (nat: every active network is NAT; bridge: all bridged; mixed), uplink_type (cable or wifi), ethernet (wan: the cable is the Internet; net1: the port is part of network 1; internet: the port is bridged with the Internet side).
 - mode (gateway, ap, repeater or router: the underlying mode of the older endpoints), ssid (device network), device_security (open or wpa2), channel.
 - uplink (uplink SSID in repeater and router modes), security (uplink driver authentication name), uplink_status (repeater only: driver connection text, for example "Connected" or "Disconnected").
 - admin_user, admin_password_set (0 or 1), telnet (1 when Telnet logins are accepted).

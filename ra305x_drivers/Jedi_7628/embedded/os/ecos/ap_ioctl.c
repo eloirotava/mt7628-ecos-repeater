@@ -293,7 +293,10 @@ int rt28xx_apcli_connected(PNET_DEV net_dev)
 	pAd = RTMP_OS_NETDEV_GET_PRIV(net_dev);
 	if (pAd == NULL)
 		return -1;
-	return (pAd->ApCfg.ApCliTab[0].CtrlCurrState == APCLI_CTRL_CONNECTED)
+	/* Valid: associated with the remote AP. With the MAC repeater on (bridged
+	 * clients behind a Wi-Fi uplink) the control state can sit elsewhere while
+	 * the link works, so either one means connected. */
+	return ((pAd->ApCfg.ApCliTab[0].CtrlCurrState == APCLI_CTRL_CONNECTED) || pAd->ApCfg.ApCliTab[0].Valid)
 		&& (pAd->ApCfg.ApCliTab[0].SsidLen != 0);
 #else
 	return -1;
