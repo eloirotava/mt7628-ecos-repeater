@@ -47,14 +47,31 @@ static int seal(tls_conn *c, int typ, const uint8_t *d, size_t n)
 	return write_all(c->fd, out, 5 + cl);
 }
 
+/* recebe o que falta do registro em rec, guardando o progresso em c->got:
+ * 0 completo, TLS_AGAIN prazo do socket (continua na proxima), -1 erro/fim */
+static int fill_rec(tls_conn *c, size_t want)
+{
+	while (c->got < want) {
+		long r = x_read(c->fd, c->rec + c->got, want - c->got);
+		if (r == -EINTR) continue;
+		if (r == -EAGAIN || r == -EWOULDBLOCK || r == -ETIMEDOUT) return TLS_AGAIN;
+		if (r <= 0) return -1;
+		c->got += (size_t)r;
+	}
+	return 0;
+}
+
 /* le e decifra um registro (pula ChangeCipherSpec); tipo real em *typ,
- * texto em rec[5..5+*len]. -1 = erro/fim. */
+ * texto em rec[5..5+*len]. -1 = erro/fim, TLS_AGAIN = registro incompleto. */
 static int open_rec(tls_conn *c, int *typ, size_t *len)
 {
 	for (;;) {
-		if (read_full(c->fd, c->rec, 5)) return -1;
+		int r = fill_rec(c, 5);
+		if (r) return r;
 		size_t n = (size_t)c->rec[3] << 8 | c->rec[4];
-		if (n > TLS_MAX_RECORD || read_full(c->fd, c->rec + 5, n)) return -1;
+		if (n > TLS_MAX_RECORD) return -1;
+		if ((r = fill_rec(c, 5 + n))) return r;
+		c->got = 0; /* registro inteiro: o proximo comeca do zero */
 		if (c->rec[0] == 20) continue;      /* ChangeCipherSpec */
 		if (c->rec[0] != 23 || n < 17) return -1; /* alerta em claro etc. */
 		uint8_t nn[12];
@@ -152,7 +169,7 @@ const char *tls_handshake(tls_conn *c, int fd, const char *host,
 	size_t hl = 0, w = 0;
 	while (host[hl]) hl++;
 	c->fd = fd;
-	c->pos = c->len = 0;
+	c->pos = c->len = c->got = 0;
 	hs.n = 0;
 	hs.deadline = deadline;
 	if (random_bytes(rnd, sizeof rnd)) return "sem aleatorio";
@@ -349,9 +366,9 @@ static int post_handshake(tls_conn *c, const uint8_t *d, size_t n)
 long tls_read(tls_conn *c, uint8_t *out, size_t n)
 {
 	if (c->pos == c->len) {
-		int typ;
+		int typ, r;
 		size_t len;
-		if (open_rec(c, &typ, &len)) return -1;
+		if ((r = open_rec(c, &typ, &len))) return r;
 		if (typ == 23) {
 			c->pos = 5;
 			c->len = 5 + len;

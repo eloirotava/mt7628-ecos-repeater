@@ -253,6 +253,11 @@ static int wss_connect(void)
 	}
 	wss_rx_len -= end;
 	memmove(wss_rx, wss_rx + end, wss_rx_len);
+	{
+		/* from now on reads wake up every second for the WireGuard timers */
+		struct timeval tv = { 1, 0 };
+		setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+	}
 	memcpy(&peer_addr, &a, sizeof a);
 	cyg_mutex_lock(&lock);
 	wss_fd = fd;
@@ -330,15 +335,12 @@ static long wss_recv(uint8_t *d, size_t cap)
 			if (r >= 0) return r;
 			continue;
 		}
-		if (!tls_pending(&wss_conn)) {
-			struct pollfd p;
-			p.fd = wss_fd; p.events = POLLIN; p.revents = 0;
-			r = x_poll(&p, 1, 1000);
-			if (r == 0) return 0;
-			if (r < 0) { wss_why = "poll failed"; return -1; }
-		}
+		/* no select(): on this stack it reported data that was not there and
+		 * the read then blocked; the socket has a 1 s receive timeout instead
+		 * and an incomplete record is resumed on the next call */
 		errno = 0;
 		r = tls_read(&wss_conn, wss_rx + wss_rx_len, sizeof wss_rx - wss_rx_len);
+		if (r == TLS_AGAIN) return 0;
 		if (r < 0) { wss_why = "TLS read failed"; return -1; }
 		wss_rx_len += (size_t)r;
 	}
