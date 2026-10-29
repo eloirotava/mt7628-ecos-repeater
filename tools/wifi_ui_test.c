@@ -41,6 +41,11 @@ int CFG_telnet_allowed(void) { return 0; }
 int wifi_ui_open_fds(void) { return 12; }
 const char *wg_ecos_wss_error(void) { return ""; }
 void mdns_status(const char **s, unsigned *q, unsigned *a, unsigned *n) { *s = "listening"; *q = *a = *n = 0; }
+#define SCHED_HOST_TEST
+#include "sched.c"
+int sched_is_off(int n) { return 0; }
+int sched_tz(void) { return -180; }
+long wg_ecos_unix_time(int sync) { return 0; }
 static unsigned long SYS_wan_ip;
 int HTTPD_reconf;
 #define MON_CMD_REBOOT 2
@@ -153,7 +158,7 @@ int main(void) {
  assert(!strcmp(cfg[CFG_SYS_OPMODE],"1"));assert(!strcmp(cfg[CFG_LAN_IP_MODE],"1"));assert(!strcmp(cfg[CFG_LAN_IP],"192.168.11.1"));assert(!strcmp(cfg[CFG_WAN_IP_MODE],"2"));
  assert(!strcmp(cfg[CFG_LAN_DHCPD_EN],"1"));assert(!strcmp(cfg[CFG_LAN_DHCPD_START],"192.168.11.100"));assert(!strcmp(cfg[CFG_WLN_ApCliEnable],"0"));
  setup("ap");strcpy(cfg[CFG_SYS_OPMODE],"1");strcpy(cfg[CFG_LAN_IP],"192.168.11.1");strcpy(cfg[CFG_LAN_MSK],"255.255.255.0");SYS_wan_ip=inet_addr("192.168.1.219");CGI_wifi_state(&post);
- assert(strstr(output,"\"mode\":\"gateway\""));assert(strstr(output,"\"lan\":{\"address\":\"192.168.11.1/24\""));assert(strstr(output,"\"wan_address\":\"192.168.1.219\""));SYS_wan_ip=0;
+ assert(strstr(output,"\"mode\":\"gateway\""));assert(strstr(output,"\"lan\":{\"address\":\"192.168.11.1/24\""));assert(strstr(output,"\"wan_address\":\"192.168.1.219\""));assert(strstr(output,"\"layout\":\"nat\""));SYS_wan_ip=0;
  setup("ap");strcpy(cfg[CFG_SYS_OPMODE],"1");CGI_wifi_apply(&post);assert(!strcmp(output,"OK"));assert(reboots==1);assert(!strcmp(cfg[CFG_SYS_OPMODE],"3"));
  puts("PASS: gateway mode (Ethernet WAN, own network, restart on change, state)");
  /* Router (WISP) mode */
@@ -210,6 +215,9 @@ int main(void) {
  S1("cable");Q("TYPE1","nat");CGI_setup_apply(&post);assert(strstr(output,"ADDRESS1"));assert(sets==0);
  S1("cable");CGI_setup_apply(&post);assert(strstr(output,"TYPE1"));assert(sets==0);
  S1("satellite");CGI_setup_apply(&post);assert(strstr(output,"UPLINK"));assert(sets==0);
+ S1("cable");Q("TYPE1","nat");Q("ADDRESS1","192.168.11.1/24");values[2]="2";Q("SSID2","guest");Q("SECURITY2","open");Q("TYPE2","nat");Q("ADDRESS2","10.0.2.1/24");Q("SCHED2","08:00-22:30");CGI_setup_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[CFG_SYS_NET2_SCHED],"08:00-22:30"));
+ S1("cable");Q("TYPE1","nat");Q("ADDRESS1","192.168.11.1/24");values[2]="2";Q("SSID2","guest");Q("SECURITY2","open");Q("TYPE2","nat");Q("ADDRESS2","10.0.2.1/24");Q("SCHED2","8-22");CGI_setup_apply(&post);assert(strstr(output,"SCHED2"));assert(sets==0);
+ S1("cable");Q("TYPE1","nat");Q("ADDRESS1","192.168.11.1/24");Q("SCHED1","08:00-22:00");CGI_setup_apply(&post);assert(strstr(output,"network 1"));assert(sets==0);
  S1("cable");Q("TYPE1","nat");Q("ADDRESS1","10.8.0.1/24");strcpy(cfg[CFG_SYS_WG_ADDR],"10.8.0.30/24");CGI_setup_apply(&post);assert(strstr(output,"WireGuard"));assert(sets==0);
  fail_at=5;S1("cable");fail_at=5;Q("TYPE1","nat");Q("ADDRESS1","192.168.11.1/24");strcpy(cfg[CFG_SYS_OPMODE],"2");CGI_setup_apply(&post);assert(strstr(output,"could not"));assert(!strcmp(cfg[CFG_SYS_OPMODE],"2"));assert(reboots==0);
  puts("PASS: unified setup (cable/Wi-Fi uplink, NAT/bridge per network, Ethernet, validation, rollback)");

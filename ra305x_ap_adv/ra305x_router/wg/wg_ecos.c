@@ -169,6 +169,14 @@ static int sntp_sync(void)
 	return 0;
 }
 
+/* UNIX time from SNTP (0 while unknown); with sync, asks SNTP when unknown.
+ * Shared with the network schedule (init/sched.c). */
+long wg_ecos_unix_time(int sync)
+{
+	if (!clock_base_unix && sync && sntp_sync() == 0) diag_printf("time: clock synchronized\n");
+	return clock_base_unix ? clock_base_unix + uptime() - clock_base_up : 0;
+}
+
 /* Strictly increasing TAI64N, as the responder rejects replays. */
 static void timestamp(uint8_t out[12])
 {

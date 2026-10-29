@@ -23,7 +23,7 @@ with tempfile.TemporaryDirectory(prefix='tomada-wifi-tests-') as temp:
     cfile = Path(temp) / 'test.c'
     binary = Path(temp) / 'test'
     cfile.write_text(harness)
-    subprocess.run(['gcc', '-std=gnu99', '-Werror=implicit-function-declaration', str(cfile), '-o', str(binary)], check=True)
+    subprocess.run(['gcc', '-std=gnu99', '-Werror=implicit-function-declaration', f'-I{repo}/ra305x_ap_adv/ra305x_router/init', str(cfile), '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True)
 subprocess.run(['node', str(repo / 'tools/wifi_ui_test.js'), str(web / 'index.html')], check=True)
 
@@ -57,7 +57,7 @@ assert '_KEY' not in reset, 'factory reset must erase the WireGuard device key, 
 llms = (web / 'llms.txt').read_text()
 assert '## API reference' in llms and 'agent_api' not in llms, 'one file for agents: guide and API reference'
 assert page.count('<%') == 1, 'only the state CGI tag may appear; webcomp parses <%'
-for endpoint in ('wifi_state', 'wifi_apply', 'wifi_scan', 'admin_apply', 'system_apply', 'wg_apply', 'startup_apply', 'networks_apply', 'firmware_apply', 'setup_apply', 'config_backup', 'config_restore'):
+for endpoint in ('wifi_state', 'wifi_apply', 'wifi_scan', 'admin_apply', 'system_apply', 'wg_apply', 'startup_apply', 'networks_apply', 'firmware_apply', 'setup_apply', 'config_backup', 'config_restore', 'log'):
     assert (web / f'{endpoint}.html').is_file(), endpoint
 assert not (web / 'factorySetting.html').exists()
 assert 'WG_KEY' not in source, 'the web interface must never read the WireGuard device private key'
@@ -106,6 +106,18 @@ with tempfile.TemporaryDirectory(prefix='tomada-wg-tests-') as temp:
 with tempfile.TemporaryDirectory(prefix='tomada-mdns-tests-') as temp:
     binary = Path(temp) / 'mdns_test'
     subprocess.run(['gcc', '-std=gnu99', '-Wall', '-DMDNS_HOST_TEST', f'-I{router}/init', '-o', str(binary), str(repo / 'tools/mdns_test.c')], check=True)
+    subprocess.run([str(binary)], check=True)
+
+# Console log ring and syslog server parsing (init/logbuf.c)
+with tempfile.TemporaryDirectory(prefix='tomada-log-tests-') as temp:
+    binary = Path(temp) / 'logbuf_test'
+    subprocess.run(['gcc', '-std=gnu99', '-Wall', '-DLOGBUF_HOST_TEST', f'-I{router}/init', '-o', str(binary), str(repo / 'tools/logbuf_test.c')], check=True)
+    subprocess.run([str(binary)], check=True)
+
+# Network schedule (init/sched.c)
+with tempfile.TemporaryDirectory(prefix='tomada-sched-tests-') as temp:
+    binary = Path(temp) / 'sched_test'
+    subprocess.run(['gcc', '-std=gnu99', '-Wall', '-DSCHED_HOST_TEST', f'-I{router}/init', '-o', str(binary), str(repo / 'tools/sched_test.c')], check=True)
     subprocess.run([str(binary)], check=True)
 
 # Startup script executor (cli/cmd_boot.c) with a fake command tree

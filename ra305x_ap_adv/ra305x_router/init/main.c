@@ -89,6 +89,10 @@ static cyg_mbox     reaper_mbox_info;
 int opmode = 1; /*1:Gateway, 2:Apcli as WAN port, 3:Repeater Mode */
 int main(void)
 {
+	{
+		extern void logbuf_capture(void);
+		logbuf_capture(); /* console log kept in RAM (GET /log.html) */
+	}
 	diag_printf("\n*******************Starting system init****************************\n");
 	//board_init();
 
@@ -166,6 +170,14 @@ int main(void)
 	{
 		extern void mdns_start(void);
 		mdns_start(); /* <name>.local; does nothing while the name is empty */
+	}
+	{
+		extern void logbuf_start(void);
+		logbuf_start(); /* remote syslog; does nothing while SYS_LOG_SERVER is empty */
+	}
+	{
+		extern void sched_start(void);
+		sched_start(); /* networks 2..7 on only inside their SYS_NETn_SCHED window */
 	}
 #ifdef CONFIG_FILE_SYSTEM
 	usb_fs_dm_init();
