@@ -103,6 +103,18 @@ int main(void)
 		assert(pass_lan >= 0 && to_wg > pass_lan && block_dev >= 0 && block_dev < to_wg && block_n3 < to_wg);
 	}
 	assert(find("pass in quick on ra2 to wg0 from any to any\n") < 0);
+	/* LAN address not known yet (bridge-based LAN before its lease): no "/0" blocks */
+	{
+		unsigned long sip = SYS_lan_ip, smask = SYS_lan_mask;
+		int k;
+		SYS_lan_ip = 0; SYS_lan_mask = 0;
+		nrules = 0;
+		net_extra_fw_flushed();
+		net_extra_fw_rules(collect);
+		assert(nrules > 0);
+		for (k = 0; k < nrules; k++) assert(!strstr(rules[k], "/0\n"));
+		SYS_lan_ip = sip; SYS_lan_mask = smask;
+	}
 	/* network 1 is routed only in bridge-based setups (opmode 3) */
 	strcpy(cfg[CFG_SYS_NET1_IP], "10.0.9.1/24");
 	strcpy(cfg[CFG_SYS_OPMODE], "2");
