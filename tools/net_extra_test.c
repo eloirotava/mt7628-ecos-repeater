@@ -8,7 +8,7 @@
 #define diag_printf printf
 
 enum { CFG_SYS_NET2_IP = 1, CFG_SYS_NET3_IP, CFG_SYS_NET4_IP, CFG_SYS_NET2_REACH, CFG_SYS_NET3_REACH, CFG_SYS_NET4_REACH,
-       CFG_SYS_NET2_INTERNET, CFG_SYS_NET3_INTERNET, CFG_SYS_NET4_INTERNET, CFG_SYS_NET2_VIA, CFG_SYS_NET3_VIA, CFG_SYS_NET4_VIA, CFG_SYS_NET5_IP, CFG_SYS_NET6_IP, CFG_SYS_NET7_IP, CFG_SYS_NET5_REACH, CFG_SYS_NET6_REACH, CFG_SYS_NET7_REACH, CFG_SYS_NET5_INTERNET, CFG_SYS_NET6_INTERNET, CFG_SYS_NET7_INTERNET, CFG_SYS_NET5_VIA, CFG_SYS_NET6_VIA, CFG_SYS_NET7_VIA, CFG_WLN_BssidNum, CFG_SYS_WG_ADDR, CFG_MAX };
+       CFG_SYS_NET2_INTERNET, CFG_SYS_NET3_INTERNET, CFG_SYS_NET4_INTERNET, CFG_SYS_NET2_VIA, CFG_SYS_NET3_VIA, CFG_SYS_NET4_VIA, CFG_SYS_NET5_IP, CFG_SYS_NET6_IP, CFG_SYS_NET7_IP, CFG_SYS_NET5_REACH, CFG_SYS_NET6_REACH, CFG_SYS_NET7_REACH, CFG_SYS_NET5_INTERNET, CFG_SYS_NET6_INTERNET, CFG_SYS_NET7_INTERNET, CFG_SYS_NET5_VIA, CFG_SYS_NET6_VIA, CFG_SYS_NET7_VIA, CFG_SYS_NET1_IP, CFG_SYS_NET1_REACH, CFG_SYS_NET1_INTERNET, CFG_SYS_NET1_VIA, CFG_SYS_OPMODE, CFG_WLN_BssidNum, CFG_SYS_WG_ADDR, CFG_MAX };
 static char cfg[CFG_MAX][64];
 static int CFG_get_str(int id, char *val) { strcpy(val, cfg[id]); return 0; }
 struct ip_set { unsigned long ip, netmask; };
@@ -103,6 +103,15 @@ int main(void)
 		assert(pass_lan >= 0 && to_wg > pass_lan && block_dev >= 0 && block_dev < to_wg && block_n3 < to_wg);
 	}
 	assert(find("pass in quick on ra2 to wg0 from any to any\n") < 0);
-	puts("PASS: routed networks, address parsing and isolation rules (reach list, Internet, device access, via WireGuard)");
+	/* network 1 is routed only in bridge-based setups (opmode 3) */
+	strcpy(cfg[CFG_SYS_NET1_IP], "10.0.9.1/24");
+	strcpy(cfg[CFG_SYS_OPMODE], "2");
+	assert(!net_extra_routed(1, 0, 0));
+	strcpy(cfg[CFG_SYS_OPMODE], "3");
+	assert(net_extra_routed(1, 0, 0) && net_extra_bridge_base());
+	assert(net_extra_ifnames(names, 7) >= 1 && !strcmp(names[0], "ra0"));
+	strcpy(cfg[CFG_SYS_NET1_IP], "");
+	assert(!net_extra_routed(1, 0, 0));
+	puts("PASS: routed networks, address parsing and isolation rules (reach list, Internet, device access, via WireGuard, network 1 in bridge setups)");
 	return 0;
 }

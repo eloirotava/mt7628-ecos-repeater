@@ -114,4 +114,4 @@ with tempfile.TemporaryDirectory(prefix='tomada-net-tests-') as temp:
     binary = Path(temp) / 'net_extra_test'
     subprocess.run(['gcc', '-std=gnu99', '-DNET_EXTRA_HOST_TEST', f'-I{router}/init', f'-I{router}/include', '-o', str(binary), str(repo / 'tools/net_extra_test.c')], check=True)
     subprocess.run([str(binary)], check=True, stdout=subprocess.PIPE)
-    print('PASS: routed networks, address parsing and isolation rules (reach list, Internet, device access, via WireGuard)')
+    print('PASS: routed networks, address parsing and isolation rules (reach list, Internet, device access, via WireGuard, network 1 in bridge setups)')

@@ -501,8 +501,11 @@ int Wireless_start()
                 return -1;
     
 #ifdef CONFIG_BRIDGE
-	sprintf(temp_cfg, "%s, %s", bridge_cfg, "ra0");
-	sprintf(bridge_cfg, "%s", temp_cfg);
+	/* network 1 as its own NAT network (bridge-based setups) stays out */
+	if (!net_extra_routed(1, 0, 0)) {
+		sprintf(temp_cfg, "%s, %s", bridge_cfg, "ra0");
+		sprintf(bridge_cfg, "%s", temp_cfg);
+	}
 #endif
 
     //Multiple BSS    
