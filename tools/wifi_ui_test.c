@@ -17,10 +17,10 @@ int net_extra_parse(const char *s, unsigned long *ip, unsigned long *mask)
 typedef int cyg_handle_t; typedef int cyg_thread; typedef int cyg_sem_t; typedef unsigned long cyg_addrword_t;
 typedef struct { int method; } http_req;
 #define METHOD_POST 1
-static const char *names[12], *values[12];
+static const char *names[32], *values[32];
 static char cfg[128][256], output[8192];
 static int sets, fail_at=-1;
-static char *WEB_query(http_req *req,const char *key) { int i; for(i=0;i<12;i++)if(names[i]&&!strcmp(names[i],key))return (char *)values[i];return NULL; }
+static char *WEB_query(http_req *req,const char *key) { int i; for(i=0;i<32;i++)if(names[i]&&!strcmp(names[i],key))return (char *)values[i];return NULL; }
 static void WEB_printf(http_req *req,const char *fmt,...) { va_list ap;va_start(ap,fmt);vsnprintf(output+strlen(output),sizeof(output)-strlen(output),fmt,ap);va_end(ap); }
 static int slot(int id) { return id >= 9001 ? 100 + id - 9001 : id; } /* startup lines after all constants */
 static void CFG_get_str(int id,char *out) { strcpy(out,cfg[slot(id)]); }
@@ -132,7 +132,7 @@ int main(void) {
  WG("1","10.8.0.30/24",WGK,"br.example","51820","25","");CGI_wg_apply(&get);assert(strstr(output,"POST required"));assert(sets==0);
  setup("ap");strcpy(cfg[CFG_SYS_WG_EN],"1");strcpy(cfg[CFG_SYS_WG_PSK],"secret-psk");CGI_wifi_state(&post);assert(strstr(output,"\"wireguard\":{\"enabled\":1"));assert(strstr(output,"\"state\":\"connected\""));assert(strstr(output,"\"preshared_key_set\":1"));assert(strstr(output,"\"handshake_age\":12"));assert(!strstr(output,"secret-psk"));
  /* Startup script */
-#define SU(a,b) do{setup("ap");for(i=0;i<12;i++)names[i]=NULL;names[0]="COMMAND1";values[0]=(a);names[1]="COMMAND3";values[1]=(b);}while(0)
+#define SU(a,b) do{setup("ap");for(i=0;i<32;i++)names[i]=NULL;names[0]="COMMAND1";values[0]=(a);names[1]="COMMAND3";values[1]=(b);}while(0)
  SU("net route add 10.9.0.0 255.255.0.0 192.168.1.2","");strcpy(cfg[101],"keep me");CGI_startup_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[100],"net route add 10.9.0.0 255.255.0.0 192.168.1.2"));assert(!strcmp(cfg[102],""));assert(!strcmp(cfg[101],"keep me"));assert(reboots==0);
  SU("bad\nline","");CGI_startup_apply(&post);assert(strstr(output,"printable"));assert(sets==0);
  {static char longline[260];memset(longline,'a',201);longline[201]=0;SU(longline,"");CGI_startup_apply(&post);assert(strstr(output,"longer"));assert(sets==0);}
@@ -161,8 +161,8 @@ int main(void) {
  setup("ap");strcpy(cfg[CFG_SYS_OPMODE],"2");strcpy(cfg[CFG_WLN_ApCliEnable],"1");strcpy(cfg[CFG_WLN_AuthMode],"OPEN;WPA2PSK;OPEN;OPEN");strcpy(cfg[CFG_WLN_BssidNum],"3");
  CGI_wifi_apply(&post);assert(!strcmp(output,"OK"));assert(reboots==1);assert(!strcmp(cfg[CFG_SYS_OPMODE],"3"));assert(!strcmp(cfg[CFG_WLN_AuthMode],"WPA2PSK;WPA2PSK;OPEN;OPEN"));assert(!strcmp(cfg[CFG_WLN_BssidNum],"3"));
  /* Networks */
-#define NETSETUP() do{setup("ap");for(i=0;i<12;i++)names[i]=NULL;strcpy(cfg[CFG_SYS_OPMODE],"2");strcpy(cfg[CFG_WLN_ApCliEnable],"1");strcpy(cfg[CFG_LAN_IP],"10.0.1.1");strcpy(cfg[CFG_LAN_MSK],"255.255.255.0");strcpy(cfg[CFG_SYS_WG_ADDR],"10.8.0.30/24");strcpy(cfg[CFG_WLN_AuthMode],"OPEN;OPEN;OPEN;OPEN");strcpy(cfg[CFG_WLN_EncrypType],"NONE;NONE;NONE;NONE");strcpy(cfg[CFG_WLN_NoForwarding],"0;0;0;0");}while(0)
-#define Q(k,v) do{for(i=0;i<12&&names[i];i++);names[i]=(k);values[i]=(v);}while(0)
+#define NETSETUP() do{setup("ap");for(i=0;i<32;i++)names[i]=NULL;strcpy(cfg[CFG_SYS_OPMODE],"2");strcpy(cfg[CFG_WLN_ApCliEnable],"1");strcpy(cfg[CFG_LAN_IP],"10.0.1.1");strcpy(cfg[CFG_LAN_MSK],"255.255.255.0");strcpy(cfg[CFG_SYS_WG_ADDR],"10.8.0.30/24");strcpy(cfg[CFG_WLN_AuthMode],"OPEN;OPEN;OPEN;OPEN");strcpy(cfg[CFG_WLN_EncrypType],"NONE;NONE;NONE;NONE");strcpy(cfg[CFG_WLN_NoForwarding],"0;0;0;0");}while(0)
+#define Q(k,v) do{for(i=0;i<32&&names[i];i++);names[i]=(k);values[i]=(v);}while(0)
  NETSETUP();Q("COUNT","3");Q("SSID2","guest");Q("SECURITY2","open");Q("ADDRESS2","10.0.2.1/24");Q("ISOLATE2","1");Q("SSID3","iot");Q("SECURITY3","wpa2");Q("PASSWORD3","iot-pass-123");Q("ADDRESS3","10.0.3.1/24");Q("INTERNET3","1");Q("REACH3","lan,net2");
  CGI_networks_apply(&post);assert(!strcmp(output,"OK"));assert(reboots==1);assert(!strcmp(cfg[CFG_WLN_BssidNum],"3"));assert(!strcmp(cfg[CFG_WLN_SSID2],"guest"));assert(!strcmp(cfg[CFG_SYS_NET2_IP],"10.0.2.1/24"));
  assert(!strcmp(cfg[CFG_WLN_AuthMode],"OPEN;OPEN;WPA2PSK;OPEN;OPEN;OPEN;OPEN"));assert(!strcmp(cfg[CFG_WLN_EncrypType],"NONE;NONE;AES;NONE;NONE;NONE;NONE"));assert(!strcmp(cfg[CFG_WLN_NoForwarding],"0;1;0;0;0;0;0"));
@@ -183,9 +183,28 @@ int main(void) {
  /* state */
  NETSETUP();strcpy(cfg[CFG_WLN_BssidNum],"2");strcpy(cfg[CFG_WLN_SSID2],"guest");strcpy(cfg[CFG_SYS_NET2_IP],"10.0.2.1/24");strcpy(cfg[CFG_SYS_NET2_INTERNET],"1");strcpy(cfg[CFG_LAN_DHCPD_EN],"1");strcpy(cfg[CFG_WLN_WPAPSK2],"secret-net-key");
  CGI_wifi_state(&post);assert(strstr(output,"\"mode\":\"router\""));assert(strstr(output,"\"lan\":{\"address\":\"10.0.1.1/24\",\"dhcp\":1}"));
- assert(strstr(output,"{\"id\":2,\"enabled\":1,\"ssid\":\"guest\",\"security\":\"open\",\"isolate\":0,\"address\":\"10.0.2.1/24\""));assert(strstr(output,"{\"id\":3,\"enabled\":0"));assert(strstr(output,"\"via\":\"wan\""));assert(!strstr(output,"secret-net-key"));
+ assert(strstr(output,"{\"id\":2,\"enabled\":1,\"ssid\":\"guest\",\"security\":\"open\",\"isolate\":0,\"type\":\"nat\",\"address\":\"10.0.2.1/24\""));assert(strstr(output,"{\"id\":3,\"enabled\":0"));assert(strstr(output,"\"via\":\"wan\""));assert(!strstr(output,"secret-net-key"));
   setup("ap");CGI_wifi_state(&post);assert(strstr(output,"\"firmware\":{\"busy\":0,\"state\":\"idle\",\"error\":\"none\"}"));
  puts("PASS: router mode, per-SSID list preservation, networks validation/overlaps/apply and state");
+ /* unified setup: uplink cable|wifi, each network nat|bridge */
+#define S1(up) do{NETSETUP();Q("UPLINK",up);Q("CHANNEL","6");Q("COUNT","1");Q("SSID1","home");Q("SECURITY1","wpa2");Q("PASSWORD1","12345678");}while(0)
+ S1("cable");Q("TYPE1","nat");Q("ADDRESS1","192.168.11.1/24");CGI_setup_apply(&post);assert(!strcmp(output,"OK"));assert(reboots==1);
+ assert(!strcmp(cfg[CFG_SYS_OPMODE],"1"));assert(!strcmp(cfg[CFG_LAN_IP],"192.168.11.1"));assert(!strcmp(cfg[CFG_LAN_DHCPD_EN],"1"));assert(!strcmp(cfg[CFG_WLN_ApCliEnable],"0"));assert(!strcmp(cfg[CFG_SYS_NET1_IP],""));
+ assert(!strcmp(cfg[CFG_WLN_WPAPSK1],"12345678"));assert(!strncmp(cfg[CFG_WLN_AuthMode],"WPA2PSK;",8));
+ S1("wifi");Q("UPLINK_SSID","AP31");Q("UPLINK_SECURITY","wpa2");Q("UPLINK_PASSWORD","uplink-pass-1");Q("TYPE1","nat");Q("ADDRESS1","10.0.1.1/24");Q("DHCP1","1");
+ values[2]="2";Q("SSID2","guest");Q("SECURITY2","open");Q("TYPE2","nat");Q("ADDRESS2","10.0.2.1/24");CGI_setup_apply(&post);assert(!strcmp(output,"OK"));
+ assert(!strcmp(cfg[CFG_SYS_OPMODE],"2"));assert(!strcmp(cfg[CFG_WLN_ApCliEnable],"1"));assert(!strcmp(cfg[CFG_WLN_MACRepeaterEn],"0"));assert(!strcmp(cfg[CFG_SYS_NET2_IP],"10.0.2.1/24"));assert(!strcmp(cfg[CFG_WLN_BssidNum],"2"));
+ S1("wifi");Q("UPLINK_SSID","AP31");Q("UPLINK_SECURITY","wpa2");Q("UPLINK_PASSWORD","uplink-pass-1");Q("TYPE1","bridge");CGI_setup_apply(&post);assert(!strcmp(output,"OK"));
+ assert(!strcmp(cfg[CFG_SYS_OPMODE],"3"));assert(!strcmp(cfg[CFG_WLN_MACRepeaterEn],"1"));assert(!strcmp(cfg[CFG_LAN_IP_MODE],"0"));assert(!strcmp(cfg[CFG_LAN_DHCPD_EN],"0"));
+ S1("cable");Q("TYPE1","nat");Q("ADDRESS1","10.0.9.1/24");values[2]="2";Q("SSID2","house");Q("SECURITY2","open");Q("TYPE2","bridge");CGI_setup_apply(&post);assert(!strcmp(output,"OK"));
+ assert(!strcmp(cfg[CFG_SYS_OPMODE],"3"));assert(!strcmp(cfg[CFG_SYS_NET1_IP],"10.0.9.1/24"));assert(!strcmp(cfg[CFG_SYS_NET2_IP],""));
+ S1("wifi");Q("UPLINK_SSID","AP31");Q("UPLINK_SECURITY","wpa2");Q("UPLINK_PASSWORD","uplink-pass-1");Q("TYPE1","bridge");Q("ETHERNET","net1");CGI_setup_apply(&post);assert(strstr(output,"ETHERNET"));assert(sets==0);
+ S1("cable");Q("TYPE1","nat");CGI_setup_apply(&post);assert(strstr(output,"ADDRESS1"));assert(sets==0);
+ S1("cable");CGI_setup_apply(&post);assert(strstr(output,"TYPE1"));assert(sets==0);
+ S1("satellite");CGI_setup_apply(&post);assert(strstr(output,"UPLINK"));assert(sets==0);
+ S1("cable");Q("TYPE1","nat");Q("ADDRESS1","10.8.0.1/24");strcpy(cfg[CFG_SYS_WG_ADDR],"10.8.0.30/24");CGI_setup_apply(&post);assert(strstr(output,"WireGuard"));assert(sets==0);
+ fail_at=5;S1("cable");fail_at=5;Q("TYPE1","nat");Q("ADDRESS1","192.168.11.1/24");strcpy(cfg[CFG_SYS_OPMODE],"2");CGI_setup_apply(&post);assert(strstr(output,"could not"));assert(!strcmp(cfg[CFG_SYS_OPMODE],"2"));assert(reboots==0);
+ puts("PASS: unified setup (cable/Wi-Fi uplink, NAT/bridge per network, Ethernet, validation, rollback)");
  puts("PASS: WireGuard validation, preshared key handling, admin requirement, save+restart and state");
  puts("PASS: admin credentials validation, current-password check and save");
  puts("PASS: server validation, AP/repeater mapping, open/mixed security, rollback and JSON escaping");
