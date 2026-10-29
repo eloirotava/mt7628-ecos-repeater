@@ -12,6 +12,7 @@
 #   sh /tmp/wg54.sh watch      start, then restart whenever it dies (not after stop)
 W=/tmp/wg54
 IF=wg0
+# The micro busybox has no rm: an empty pid file means stopped.
 
 rule() { iptables -D "$@" 2>/dev/null; iptables -I "$@"; }
 unrule() { iptables -D "$@" 2>/dev/null; }
@@ -23,24 +24,21 @@ rules() {
 	rule FORWARD -o $IF -j ACCEPT
 }
 if [ "$1" = fw ]; then
-	[ -f /tmp/wg54.pid ] && rules
+	[ -s /tmp/wg54.pid ] && rules
 	exit 0
 fi
 if [ "$1" = watch ]; then
-	for s in HUP INT TERM; do
-		trap "echo watch: $s at \$(cat /proc/uptime) >> /tmp/wg54.boot" $s
-	done
 	sh "$0"
 	while :; do
 		sleep 60
-		[ -f /tmp/wg54.pid ] || exit 0
+		[ -s /tmp/wg54.pid ] || exit 0
 		[ -d "/proc/$(cat /tmp/wg54.pid)" ] || sh "$0"
 	done
 fi
 
-if [ -f /tmp/wg54.pid ]; then
+if [ -s /tmp/wg54.pid ]; then
 	kill "$(cat /tmp/wg54.pid)" 2>/dev/null
-	rm -f /tmp/wg54.pid
+	: > /tmp/wg54.pid
 fi
 if [ "$1" = stop ]; then
 	ip tunnel del $IF 2>/dev/null
