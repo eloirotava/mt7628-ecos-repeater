@@ -38,6 +38,7 @@ const char sys_cust_ver[]="test-1";
 const unsigned int sys_build_time=1700000000;
 static long long cyg_current_time(void) { return 12345; }
 int CFG_telnet_allowed(void) { return 0; }
+static unsigned long SYS_wan_ip;
 int HTTPD_reconf;
 #define MON_CMD_REBOOT 2
 static int reboots;
@@ -139,6 +140,14 @@ int main(void) {
  SU("x","");save_fail=1;CGI_startup_apply(&post);assert(strstr(output,"saving"));
  setup("ap");strcpy(cfg[100],"net route add a b c");strcpy(cfg[101],"");CGI_wifi_state(&post);assert(strstr(output,"\"startup\":[{\"command\":\"net route add a b c\",\"result\":\"ok\"},{\"command\":\"\",\"result\":\"\"}"));
  puts("PASS: startup script validation, keep/clear semantics, no restart and state");
+ /* Ethernet router (gateway) mode: factory default, Ethernet WAN by DHCP, own LAN */
+ setup("gateway");names[8]="DEVICE_SECURITY";values[8]="open";values[2]="";CGI_wifi_apply(&post);assert(!strcmp(output,"OK"));assert(reboots==1);
+ assert(!strcmp(cfg[CFG_SYS_OPMODE],"1"));assert(!strcmp(cfg[CFG_LAN_IP_MODE],"1"));assert(!strcmp(cfg[CFG_LAN_IP],"192.168.11.1"));assert(!strcmp(cfg[CFG_WAN_IP_MODE],"2"));
+ assert(!strcmp(cfg[CFG_LAN_DHCPD_EN],"1"));assert(!strcmp(cfg[CFG_LAN_DHCPD_START],"192.168.11.100"));assert(!strcmp(cfg[CFG_WLN_ApCliEnable],"0"));
+ setup("ap");strcpy(cfg[CFG_SYS_OPMODE],"1");strcpy(cfg[CFG_LAN_IP],"192.168.11.1");strcpy(cfg[CFG_LAN_MSK],"255.255.255.0");SYS_wan_ip=inet_addr("192.168.1.219");CGI_wifi_state(&post);
+ assert(strstr(output,"\"mode\":\"gateway\""));assert(strstr(output,"\"lan\":{\"address\":\"192.168.11.1/24\""));assert(strstr(output,"\"wan_address\":\"192.168.1.219\""));SYS_wan_ip=0;
+ setup("ap");strcpy(cfg[CFG_SYS_OPMODE],"1");CGI_wifi_apply(&post);assert(!strcmp(output,"OK"));assert(reboots==1);assert(!strcmp(cfg[CFG_SYS_OPMODE],"3"));
+ puts("PASS: gateway mode (Ethernet WAN, own network, restart on change, state)");
  /* Router (WISP) mode */
  setup("router");names[8]="DEVICE_SECURITY";values[8]="open";values[2]="";CGI_wifi_apply(&post);assert(!strcmp(output,"OK"));assert(reboots==1);
  assert(!strcmp(cfg[CFG_SYS_OPMODE],"2"));assert(!strcmp(cfg[CFG_LAN_IP_MODE],"1"));assert(!strcmp(cfg[CFG_LAN_IP],"10.0.1.1"));assert(!strcmp(cfg[CFG_LAN_MSK],"255.255.255.0"));

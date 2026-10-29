@@ -94,6 +94,7 @@ legend{font-weight:600;padding:0 4px}
 <form id="wifi-form" novalidate>
 <section aria-labelledby="h-mode">
 <h2 id="h-mode">Uplink</h2>
+<label class="radio"><input type="radio" name="MODE" value="gateway"><span><strong>Ethernet (router)</strong><small>Cable to your router or modem as the Internet uplink; this device runs its own Wi-Fi network behind NAT with DHCP (factory default: 192.168.11.1).</small></span></label>
 <label class="radio"><input type="radio" name="MODE" value="ap"><span><strong>Ethernet (access point)</strong><small>Cable to your router; this device provides Wi-Fi.</small></span></label>
 <label class="radio"><input type="radio" name="MODE" value="repeater"><span><strong>Wi-Fi (repeater)</strong><small>Connects to an existing 2.4 GHz network and extends it. Unplug the Ethernet cable first to avoid a network loop.</small></span></label>
 <label class="radio"><input type="radio" name="MODE" value="router"><span><strong>Wi-Fi (router)</strong><small>Connects to an existing 2.4 GHz network as its Internet uplink and runs its own network behind NAT; the Ethernet port joins that network. Needed for routed extra networks.</small></span></label>
@@ -116,7 +117,7 @@ legend{font-weight:600;padding:0 4px}
 <label for="lan-address">This device's network (address/prefix)</label>
 <input id="lan-address" maxlength="18" autocomplete="off" spellcheck="false" placeholder="10.0.1.1/24">
 <label class="check"><input type="checkbox" id="lan-dhcp" checked> Hand out addresses (DHCP) on this network and the Ethernet port</label>
-<small>Changing to or from router mode restarts the device. Keep a way back: the rescue address 192.168.11.1 on the Ethernet port, or WireGuard.</small>
+<small>Changing to or from a router mode restarts the device. Keep a way back: this network's address, the rescue address 192.168.11.1, or WireGuard.</small>
 </div>
 </section>
 
@@ -297,7 +298,7 @@ function renderStatus() {
   $('st-nets').textContent = nets.length ? nets.map(function (n) { return n.ssid + (n.address ? ' (' + n.address + ')' : ''); }).join(', ') : '–';
   var built = state.build ? new Date(state.build * 1000).toISOString().slice(0, 10) : '';
   $('subtitle').textContent = 'Firmware ' + (state.version || '?') + (built ? ' · built ' + built : '');
-  $('st-mode').textContent = state.mode === 'router' ? 'Wi-Fi router (' + ((state.lan || {}).address || '') + ')' : rep ? 'Wi-Fi repeater' : 'Ethernet access point';
+  $('st-mode').textContent = state.mode === 'gateway' ? 'Ethernet router (' + ((state.lan || {}).address || '') + (state.wan_address ? ', uplink ' + state.wan_address : ', no uplink address yet') + ')' : state.mode === 'router' ? 'Wi-Fi router (' + ((state.lan || {}).address || '') + ')' : rep ? 'Wi-Fi repeater' : 'Ethernet access point';
   $('st-ssid').textContent = (state.ssid || '–') + (state.device_security === 'open' ? ' (open)' : ' (WPA2)');
   var up = $('st-uplink');
   if (!rep) { up.textContent = 'Ethernet'; up.className = ''; }
@@ -329,7 +330,7 @@ function renderStatus() {
 }
 
 function fillForms() {
-  var mode = state.mode === 'repeater' || state.mode === 'router' ? state.mode : 'ap';
+  var mode = state.mode === 'repeater' || state.mode === 'router' || state.mode === 'gateway' ? state.mode : 'ap';
   wifiForm.querySelector('input[name=MODE][value=' + mode + ']').checked = true;
   $('ssid').value = state.ssid || '';
   $('device-security').value = state.device_security === 'open' ? 'open' : 'wpa2';
@@ -337,7 +338,7 @@ function fillForms() {
   $('uplink').value = state.uplink && state.uplink !== 'ECOSAPClient' ? state.uplink : '';
   $('uplink-security').value = securityName(state.security);
   $('admin-user').value = state.admin_user || 'admin';
-  $('lan-address').value = (state.lan || {}).address || '10.0.1.1/24';
+  $('lan-address').value = (state.lan || {}).address || (state.mode === 'gateway' ? '192.168.11.1/24' : '10.0.1.1/24');
   $('lan-dhcp').checked = state.lan ? !!state.lan.dhcp : true;
   fillNetworks();
   var wg = state.wireguard || {};
@@ -353,7 +354,7 @@ function fillForms() {
 function update() {
   var rep = isRepeater();
   $('uplink-fields').hidden = !rep;
-  $('router-fields').hidden = currentMode() !== 'router';
+  $('router-fields').hidden = currentMode() !== 'router' && currentMode() !== 'gateway';
   var open = $('device-security').value === 'open';
   $('device-password-field').hidden = open;
   $('password-hint').textContent = '8–63 ASCII characters.' + (state.device_security === 'wpa2' ? ' Leave empty to keep the current password.' : '');
@@ -459,15 +460,15 @@ wifiForm.addEventListener('submit', async function (e) {
   if (!ssidOK(ssid) || (rep && !ssidOK(uplink))) return msg(out, 'Network names must be 1–32 bytes without control characters.', 'bad');
   if (!open && (pw ? !asciiKey(pw) : state.device_security !== 'wpa2')) return msg(out, 'Enter a device network password of 8–63 ASCII characters.', 'bad');
   if (rep && !upOpen && (upPw ? !asciiKey(upPw) : uplink !== state.uplink)) return msg(out, 'Enter the uplink password (8–63 ASCII characters).', 'bad');
-  var mode = currentMode(), restart = mode === 'router' || state.mode === 'router';
+  var mode = currentMode(), routed = mode === 'router' || mode === 'gateway', restart = routed || state.mode === 'router' || state.mode === 'gateway';
   var lanAddr = $('lan-address').value.trim(), bssid = $('uplink-bssid').value.trim();
-  if (mode === 'router' && !/^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/.test(lanAddr)) return msg(out, 'Device network: IPv4/prefix, for example 10.0.1.1/24.', 'bad');
+  if (routed && !/^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/.test(lanAddr)) return msg(out, 'Device network: IPv4/prefix, for example 10.0.1.1/24.', 'bad');
   if (rep && bssid && !/^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$/.test(bssid)) return msg(out, 'BSSID: aa:bb:cc:dd:ee:ff, or leave empty.', 'bad');
-  if (!window.confirm(mode === 'router' ? 'Apply router mode? The device restarts with its own network ' + lanAddr + '.' : mode === 'repeater' ? 'Apply repeater mode? Unplug the Ethernet cable first. Wi-Fi will restart.' : 'Apply access point mode? Keep the Ethernet cable connected. Wi-Fi will restart.' + (restart ? ' The device restarts.' : ''))) return;
+  if (!window.confirm(mode === 'gateway' ? 'Apply Ethernet router mode? The device restarts with its own network ' + lanAddr + '; the Ethernet cable becomes its Internet uplink.' : mode === 'router' ? 'Apply router mode? The device restarts with its own network ' + lanAddr + '.' : mode === 'repeater' ? 'Apply repeater mode? Unplug the Ethernet cable first. Wi-Fi will restart.' : 'Apply access point mode? Keep the Ethernet cable connected. Wi-Fi will restart.' + (restart ? ' The device restarts.' : ''))) return;
   var body = new URLSearchParams();
   body.set('SAVE', '1');
   body.set('MODE', mode);
-  if (mode === 'router') { body.set('LAN_ADDRESS', lanAddr); body.set('LAN_DHCP', $('lan-dhcp').checked ? '1' : '0'); }
+  if (routed) { body.set('LAN_ADDRESS', lanAddr); body.set('LAN_DHCP', $('lan-dhcp').checked ? '1' : '0'); }
   if (rep) body.set('UPLINK_BSSID', bssid);
   body.set('SSID', ssid);
   body.set('DEVICE_SECURITY', open ? 'open' : 'wpa2');

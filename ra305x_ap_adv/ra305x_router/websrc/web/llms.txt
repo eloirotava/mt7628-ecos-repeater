@@ -9,17 +9,18 @@ Ask the owner before changing connectivity, credentials, restarting or writing f
 ## Factory defaults
 
 - Device network: open (no password), named "Extender-" followed by the Wi-Fi MAC in uppercase without colons, for example Extender-A03E9C1D0E54.
-- Mode: access point (Ethernet uplink), bridged; the device takes its own address from the upstream router by DHCP and runs no DHCP server. Clients on its network get addresses from the upstream router.
+- Mode: Ethernet router (MODE=gateway). The device network is 192.168.11.1/24 and hands out 192.168.11.100-199 by DHCP, so a phone or laptop that joins it gets an address and reaches http://192.168.11.1/ with no cable and no manual address. The Ethernet port is the Internet uplink: it takes an address from the router on the other end by DHCP (wan_address in the state) and the device network is behind NAT. The page is also reachable at that Ethernet address from the upstream network.
 - Admin: user "admin", no password; the page opens without signing in. Telnet is disabled.
 - WireGuard: disabled, with a new device key; the server must be given the new public key.
-- Rescue address 192.168.11.1 is always present on the LAN side in addition to the DHCP address.
+- Rescue address: in the bridged modes (ap, repeater) 192.168.11.1 is always present on the device side next to its DHCP address; in the router modes the device network itself is the way in.
 - Holding the reset button for more than 4 seconds restores these defaults and restarts (about one minute). A short press only restarts.
 
 ## Find the device
 
-1. Join the "Extender-..." network (factory defaults) or the configured device network, or use the same LAN as its Ethernet cable.
-2. The device address is the DHCP lease for its MAC on the upstream router. Without router access: from a client on the device network, use the router's address space (the device bridges), or set a static address in 192.168.11.0/24 on a wired client and use http://192.168.11.1/.
-3. Confirm with GET /wifi_state.html: JSON with "chip":"MT7628KN".
+1. Factory defaults: join the open "Extender-..." network; your client gets a 192.168.11.x address by DHCP; open http://192.168.11.1/. This works with or without the Ethernet cable.
+2. Configured device: join its device network. In router modes (gateway, router) use the gateway address your client received (the device's LAN address, for example 10.0.1.1 or 192.168.11.1). In bridged modes (ap, repeater) the device has a DHCP address from the upstream router: find the lease for its MAC there, or set a static address in 192.168.11.0/24 on your client (wired or Wi-Fi) and use http://192.168.11.1/.
+3. From the upstream network (the far end of the Ethernet cable), in gateway mode the device answers at the address it leased there (look for its MAC in the upstream router's DHCP leases).
+4. Confirm with GET /wifi_state.html: JSON with "chip":"MT7628KN".
 
 ## Set up from factory defaults
 
@@ -28,9 +29,11 @@ Do these in order. After each POST, check the response is OK; for Wi-Fi changes 
 1. Inspect: GET /wifi_state.html. Note mode, ssid, device_security, admin_password_set.
 2. Secure administration first: POST /admin_apply.html USER=admin&PASSWORD=<new>&CONFIRM=<new>&CURRENT= . Then use HTTP Basic authentication with these credentials on every later request (except /llms.txt).
 3. Choose the uplink:
-   - Ethernet (access point): keep the cable to the router; MODE=ap and a CHANNEL of your choice (1, 6 or 11 are usual).
+   - Ethernet, own network (router, the factory mode): MODE=gateway; clients are on the device's own network behind NAT.
+   - Ethernet, same network as the router (access point): MODE=ap; clients get addresses from the router and see the rest of the network.
    - Wi-Fi (repeater): unplug the Ethernet cable first (a cable to the same network plus a wireless uplink makes a bridge loop). GET /wifi_scan.html, pick the network, and use its channel and security (WPA2PSK/AES = wpa2, WPA1PSKWPA2PSK/... = mixed, NONE = open; WPA3/SAE and enterprise are unsupported).
 4. Secure the device network and apply, in one request:
+   - Ethernet router: POST /wifi_apply.html MODE=gateway&SSID=<name>&DEVICE_SECURITY=wpa2&PASSWORD=<8-63 chars>&CHANNEL=<1-13>&LAN_ADDRESS=192.168.11.1/24&LAN_DHCP=1 . The device restarts (about one minute); reconnect to the new SSID.
    - Access point: POST /wifi_apply.html MODE=ap&SSID=<name>&DEVICE_SECURITY=wpa2&PASSWORD=<8-63 chars>&CHANNEL=<1-13>
    - Repeater: POST /wifi_apply.html MODE=repeater&SSID=<name>&DEVICE_SECURITY=wpa2&PASSWORD=<8-63 chars>&CHANNEL=<uplink channel>&UPLINK_SSID=<network>&UPLINK_SECURITY=<wpa2|mixed|open>&UPLINK_PASSWORD=<password>
    Wi-Fi restarts; if you are connected over Wi-Fi, reconnect to the new SSID with the new password. The DHCP address may change.
@@ -77,12 +80,12 @@ Requests that change settings use POST with application/x-www-form-urlencoded fi
 
 GET /wifi_state.html returns JSON:
 - busy (0 or 1), revision (apply counter), error (0 on success; -3 means saving failed), stage, saved (1 when the last apply was written and verified in flash).
-- mode (ap, repeater or router), ssid (device network), device_security (open or wpa2), channel.
+- mode (gateway, ap, repeater or router), ssid (device network), device_security (open or wpa2), channel.
 - uplink (uplink SSID in repeater and router modes), security (uplink driver authentication name), uplink_status (repeater only: driver connection text, for example "Connected" or "Disconnected").
 - admin_user, admin_password_set (0 or 1), telnet (1 when Telnet logins are accepted).
 - chip, version, build (UNIX time), uptime (seconds).
 - firmware: busy, state and error of the last firmware check, test or installation.
-- lan (router mode only): address (IPv4/prefix), dhcp (0 or 1).
+- lan (router and gateway modes): address (IPv4/prefix), dhcp (0 or 1). wan_address (gateway mode): the address the Ethernet uplink got by DHCP, empty until it has one.
 - networks: four objects (id 1-4) with enabled, ssid, security (open or wpa2), isolate (0 or 1), and for ids 2-4 address (empty when bridged), reach, internet and via (wan or wg).
 - wireguard: enabled, address (tunnel address/prefix), peer_public_key, endpoint, port, keepalive, preshared_key_set, public_key (this device, base64; new after every factory reset), state (off, starting, clock, handshake, connected or error), status, handshake_age (seconds, -1 before the first), rx_bytes and tx_bytes.
 
@@ -95,8 +98,8 @@ GET /wifi_scan.html runs a site survey (about 3 seconds) and returns JSON {"erro
 ### Apply Wi-Fi settings
 
 POST /wifi_apply.html with:
-- MODE: ap, repeater or router. ap and repeater bridge clients to the upstream network (ap: Ethernet uplink; repeater: Wi-Fi uplink), use upstream DHCP for the management address and run no DHCP server. router (WISP): Wi-Fi uplink as WAN with NAT; the device's own network uses LAN_ADDRESS and, with LAN_DHCP=1, hands out .100-.199. Changing to or from router saves and restarts the device instead of applying live.
-- LAN_ADDRESS: router only, IPv4/prefix 8-30 (default 10.0.1.1/24). LAN_DHCP: router only, 1 (default) or 0; use 0 when the Ethernet port is cabled to a network that already has a DHCP server.
+- MODE: gateway, ap, repeater or router. gateway (factory default): Ethernet is the WAN (DHCP client) with NAT; the device network (Wi-Fi) uses LAN_ADDRESS (default 192.168.11.1/24) and, with LAN_DHCP=1, hands out .100-.199. ap and repeater bridge clients to the upstream network (ap: Ethernet uplink; repeater: Wi-Fi uplink), use upstream DHCP for the management address and run no DHCP server. router (WISP): Wi-Fi uplink as WAN with NAT; the device's own network uses LAN_ADDRESS and, with LAN_DHCP=1, hands out .100-.199. Changing to or from router or gateway saves and restarts the device instead of applying live.
+- LAN_ADDRESS: router and gateway, IPv4/prefix 8-30 (default 10.0.1.1/24 for router, 192.168.11.1/24 for gateway). LAN_DHCP: router and gateway, 1 (default) or 0; use 0 when the Ethernet port is cabled to a network that already has a DHCP server.
 - UPLINK_BSSID: optional for repeater and router, aa:bb:cc:dd:ee:ff, pins the uplink to one access point; empty lets the driver choose by name.
 - SSID: device network name, 1-32 UTF-8 bytes, no control characters.
 - DEVICE_SECURITY: open or wpa2.
@@ -120,7 +123,7 @@ POST /admin_apply.html with USER (1-31 printable ASCII characters, no spaces or 
 
 ### System
 
-POST /system_apply.html with ACTION=reboot (restart) or ACTION=factory (erase settings, restore factory defaults and restart). The connection drops; the device returns after about one minute. Factory defaults: open network "Extender-<Wi-Fi MAC>", no admin password, Telnet disabled, WireGuard disabled with a new device key. The reset button does the same when held for more than 4 seconds; a short press restarts.
+POST /system_apply.html with ACTION=reboot (restart) or ACTION=factory (erase settings, restore factory defaults and restart). The connection drops; the device returns after about one minute. Factory defaults: Ethernet router mode with the open network "Extender-<Wi-Fi MAC>" at 192.168.11.1/24 (DHCP), no admin password, Telnet disabled, WireGuard disabled with a new device key. The reset button does the same when held for more than 4 seconds; a short press restarts.
 
 ### WireGuard
 
