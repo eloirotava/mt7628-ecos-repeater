@@ -198,6 +198,7 @@ struct cfgid_str_t cfgid_str_table[]=
     CFG_STR_ENTRY_( SYS_WG_DNS ),
     CFG_STR_ENTRY_( SYS_WG_WATCHDOG ),
     CFG_STR_ENTRY_( SYS_MDNS_NAME ),
+    CFG_STR_ENTRY_( SYS_LOG_SERVER ),
     CFG_STR_ENTRY_( SYS_WG_EN ),
     CFG_STR_ENTRY_( SYS_WG_KEY ),
     CFG_STR_ENTRY_( SYS_WG_ADDR ),

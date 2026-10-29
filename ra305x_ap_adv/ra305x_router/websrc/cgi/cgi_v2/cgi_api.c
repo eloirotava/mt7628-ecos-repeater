@@ -399,6 +399,8 @@ void CGI_wifi_state(http_req *req)
     }
     val[0] = '\0'; CFG_get_str(CFG_SYS_MDNS_NAME, val);
     WEB_printf(req, ",\"mdns_name\":"); wifi_ui_json(req, val);
+    val[0] = '\0'; CFG_get_str(CFG_SYS_LOG_SERVER, val);
+    WEB_printf(req, ",\"log_server\":"); wifi_ui_json(req, val);
     {
         extern void mdns_status(const char **state, unsigned *queries, unsigned *answers, unsigned *noaddr);
         const char *ms; unsigned q, an, na;
@@ -7819,8 +7821,33 @@ void CGI_system_apply(http_req *req)
         CFG_commit(CFG_NO_EVENT);
         if (CFG_save_user()) { WEB_printf(req,"ERROR: saving to flash failed"); return; }
         WEB_printf(req,"OK");
+    } else if (action && !strcmp(action,"log")) {
+        /* remote syslog server for the console log; empty turns it off */
+        extern int logbuf_parse_server(const char *s, unsigned long *ip, unsigned short *port);
+        char *srv = WEB_query(req,"SERVER");
+        unsigned long ip;
+        unsigned short port;
+        if (!srv || (*srv && (strlen(srv) > 21 || logbuf_parse_server(srv, &ip, &port)))) { WEB_printf(req,"ERROR: SERVER must be an IPv4 address with an optional :port (default 514), or empty"); return; }
+        if (CFG_set_str(CFG_SYS_LOG_SERVER, srv) < 0) { WEB_printf(req,"ERROR: settings could not be applied"); return; }
+        CFG_commit(CFG_NO_EVENT);
+        if (CFG_save_user()) { WEB_printf(req,"ERROR: saving to flash failed"); return; }
+        WEB_printf(req,"OK");
     } else
-        WEB_printf(req,"ERROR: ACTION must be reboot, factory or name");
+        WEB_printf(req,"ERROR: ACTION must be reboot, factory, name or log");
+}
+
+/* GET /log.html: the last console messages (8 KB ring, oldest first) */
+void CGI_log_view(http_req *req)
+{
+    extern int logbuf_read(char *out, int size);
+    char *buf = malloc(8200);
+    int n, i;
+    if (!buf) { WEB_printf(req,"ERROR: insufficient memory"); return; }
+    n = logbuf_read(buf, 8200);
+    for (i = 0; i < n; i++) if (buf[i] == '\r' || (unsigned char)buf[i] < 9) buf[i] = ' ';
+    for (i = 0; i < n; i += 256)
+        WEB_printf(req, "%.*s", n - i < 256 ? n - i : 256, buf + i);
+    free(buf);
 }
 
 /* GET /config_backup.html: all settings as text (NAME=value lines), except

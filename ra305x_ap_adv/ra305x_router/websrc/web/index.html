@@ -236,6 +236,18 @@ legend{font-weight:600;padding:0 4px}
 <p id="backup-msg" class="msg" role="status" aria-live="polite"></p>
 </section>
 
+<section aria-labelledby="h-log">
+<h2 id="h-log">Log</h2>
+<p class="hint">The last console messages (WireGuard, WSS, mDNS, networks). Optionally sent as syslog over UDP to a server, for example the WireGuard server, to follow the device without a serial cable.</p>
+<div class="row"><button type="button" id="log-refresh" class="secondary">Show log</button></div>
+<pre id="log-view" hidden></pre>
+<label for="log-server">Remote syslog server</label>
+<input id="log-server" maxlength="21" autocomplete="off" spellcheck="false" placeholder="10.8.0.1:514">
+<small>IPv4 address with an optional :port (default 514). Empty turns it off.</small>
+<div class="row"><button type="button" id="log-save" class="secondary">Save server</button></div>
+<p id="log-msg" class="msg" role="status" aria-live="polite"></p>
+</section>
+
 <section aria-labelledby="h-system">
 <h2 id="h-system">System</h2>
 <div class="row">
@@ -395,6 +407,7 @@ function fillForms() {
   $('ethernet').value = state.ethernet === 'internet' ? 'internet' : 'net1';
   $('admin-user').value = state.admin_user || 'admin';
   $('mdns-name').value = state.mdns_name || '';
+  $('log-server').value = state.log_server || '';
   var nets = state.networks || [];
   $('net-count').value = String(Math.max(1, nets.filter(function (x) { return x.enabled; }).length));
   for (var n = 1; n <= NET_MAX; n++) {
@@ -721,6 +734,26 @@ async function system(action, question, done) {
   }
   msg($('system-msg'), done);
 }
+$('log-refresh').addEventListener('click', async function () {
+  var out = $('log-msg');
+  try {
+    var r = await fetch('/log.html?t=' + Date.now(), {cache: 'no-store', signal: AbortSignal.timeout(8000)});
+    var text = await r.text();
+    $('log-view').textContent = text || '(empty)';
+    $('log-view').hidden = false;
+    msg(out, '');
+  } catch (err) { msg(out, 'Could not read the log.', 'bad'); }
+});
+$('log-save').addEventListener('click', async function () {
+  var out = $('log-msg'), srv = $('log-server').value.trim(), body = new URLSearchParams();
+  if (srv && !/^(\d{1,3}\.){3}\d{1,3}(:\d{1,5})?$/.test(srv)) return msg(out, 'Server: an IPv4 address with an optional :port, or empty.', 'bad');
+  body.set('ACTION', 'log'); body.set('SERVER', srv);
+  try {
+    var text = await post('/system_apply.html', body);
+    if (text !== 'OK') throw new Error(text.replace(/^ERROR:\s*/, ''));
+    msg(out, srv ? 'Saved. Console lines now go to ' + srv + '.' : 'Saved. Remote syslog is off.', 'good');
+  } catch (err) { msg(out, err.message || 'Could not save the server.', 'bad'); }
+});
 $('mdns-save').addEventListener('click', async function () {
   var out = $('mdns-msg'), name = $('mdns-name').value.trim(), body = new URLSearchParams();
   if (name && !/^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(name)) return msg(out, 'Name: letters, digits and “-” (not at the ends), up to 63; or empty.', 'bad');

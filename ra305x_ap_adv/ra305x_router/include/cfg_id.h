@@ -273,6 +273,8 @@
 #define CFG_SYS_WG_WATCHDOG	CFG_SYS_(117,CFG_TYPE_STR)
 /* mDNS host name: answers as <name>.local (empty: off) */
 #define CFG_SYS_MDNS_NAME	CFG_SYS_(118,CFG_TYPE_STR)
+/* remote syslog server for the console log, "a.b.c.d[:port]" (empty: off) */
+#define CFG_SYS_LOG_SERVER	CFG_SYS_(119,CFG_TYPE_STR)
 /* WireGuard client (wg/wg_ecos.c) */
 #define CFG_SYS_WG_EN	CFG_SYS_(50,CFG_TYPE_STR)
 #define CFG_SYS_WG_KEY	CFG_SYS_(51,CFG_TYPE_STR)
