@@ -7291,7 +7291,7 @@ static int net_reach_ok(const char *s)
     strcpy(buf, s);
     for (t = strtok_r(buf, ",", &save); t; t = strtok_r(0, ",", &save))
         if (strcmp(t,"device") && strcmp(t,"lan") && strcmp(t,"wg") &&
-            !(t[0] == 'n' && t[1] == 'e' && t[2] == 't' && t[3] >= '2' && t[3] <= '0' + NET_MAX && !t[4])) return 0;
+            !(t[0] == 'n' && t[1] == 'e' && t[2] == 't' && t[3] >= '1' && t[3] <= '0' + NET_MAX && !t[4])) return 0;
     return 1;
 }
 
@@ -7318,6 +7318,14 @@ static void net_state(http_req *req)
         /* address the Ethernet WAN got by DHCP; empty until it has one */
         WEB_printf(req, ",\"wan_address\":\"%s\"", SYS_wan_ip ? inet_ntoa(w) : "");
     }
+    {
+        /* unified view: where the Internet comes from and where Ethernet is */
+        int op;
+        val[0] = 0; CFG_get_str(CFG_SYS_OPMODE, val); op = atoi(val);
+        val[0] = 0; CFG_get_str(CFG_WLN_ApCliEnable, val);
+        WEB_printf(req, ",\"uplink_type\":\"%s\",\"ethernet\":\"%s\"", atoi(val) ? "wifi" : "cable",
+                   op == 1 ? "wan" : op == 2 ? "net1" : "internet");
+    }
     WEB_printf(req, ",\"networks\":[");
     for (n = 0; n < NET_MAX; n++) {
         val[0] = 0; CFG_get_str(net_ssid_ids[n], val);
@@ -7329,9 +7337,32 @@ static void net_state(http_req *req)
         list[0] = 0; CFG_get_str(CFG_WLN_NoForwarding, list);
         net_list_get(item, list, n);
         WEB_printf(req, ",\"isolate\":%d", atoi(item) == 1);
+        if (!n) {
+            /* network 1: the LAN in gateway/router setups, or a NAT network of
+             * its own (SYS_NET1_IP) / bridged in bridge-based setups */
+            char a[64];
+            int bridge_base = wifi_ui_is_router() || wifi_ui_is_gateway() ? 0 : 1;
+            a[0] = 0;
+            if (!bridge_base) {
+                char ip[20], mask[20];
+                unsigned long mm;
+                int bits = 0;
+                CFG_get_str(CFG_LAN_IP, ip); CFG_get_str(CFG_LAN_MSK, mask);
+                mm = ntohl(inet_addr(mask));
+                while (mm & 0x80000000UL) { bits++; mm <<= 1; }
+                snprintf(a, sizeof a, "%s/%d", ip, bits);
+            } else CFG_get_str(CFG_SYS_NET1_IP, a);
+            WEB_printf(req, ",\"type\":\"%s\",\"address\":", a[0] ? "nat" : "bridge"); wifi_ui_json(req, a);
+            val[0] = 0; CFG_get_str(CFG_SYS_NET1_REACH, val);
+            WEB_printf(req, ",\"reach\":"); wifi_ui_json(req, val);
+            val[0] = 0; CFG_get_str(CFG_SYS_NET1_INTERNET, val);
+            WEB_printf(req, ",\"internet\":%d", strcmp(val, "0") != 0);
+            val[0] = 0; CFG_get_str(CFG_SYS_NET1_VIA, val);
+            WEB_printf(req, ",\"via\":\"%s\"", strcmp(val, "wg") ? "wan" : "wg");
+        }
         if (n) {
             val[0] = 0; CFG_get_str(net_ip_ids[n - 1], val);
-            WEB_printf(req, ",\"address\":"); wifi_ui_json(req, val);
+            WEB_printf(req, ",\"type\":\"%s\",\"address\":", val[0] ? "nat" : "bridge"); wifi_ui_json(req, val);
             val[0] = 0; CFG_get_str(net_reach_ids[n - 1], val);
             WEB_printf(req, ",\"reach\":"); wifi_ui_json(req, val);
             val[0] = 0; CFG_get_str(net_inet_ids[n - 1], val);
@@ -7433,6 +7464,185 @@ void CGI_networks_apply(http_req *req)
     if (CFG_save_user()) { WEB_printf(req,"ERROR: saving to flash failed"); return; }
     WEB_printf(req,"OK");
     mon_snd_cmd(MON_CMD_REBOOT);
+}
+
+/* POST /setup_apply.html: the whole Wi-Fi/network setup in one request.
+ * UPLINK cable|wifi (wifi: UPLINK_SSID, UPLINK_SECURITY, UPLINK_PASSWORD,
+ * optional UPLINK_BSSID); CHANNEL; ETHERNET net1|internet (Wi-Fi uplink);
+ * COUNT 1-7; for each network n: SSIDn, SECURITYn, PASSWORDn, TYPEn
+ * (nat|bridge), and for NAT networks ADDRESSn, INTERNETn, REACHn, VIAn;
+ * ISOLATEn; DHCP1 (network 1 when it is the main LAN).
+ * Without any bridged network the SDK's gateway (cable) or router (Wi-Fi)
+ * mode runs with network 1 as its LAN; otherwise opmode 3 bridges the
+ * uplink with the bridged networks and the NAT networks (network 1
+ * included) are routed out of the bridge (init/net_extra.c). Saves and
+ * restarts. */
+void CGI_setup_apply(http_req *req)
+{
+    extern int net_extra_parse(const char *s, unsigned long *ip, unsigned long *mask);
+    char key[16], *v, *uplink, *upssid, *upsec, *upkey, *bssid, *channel, *eth, *dhcp1, *end;
+    char *ssid[NET_MAX], *sec[NET_MAX], *pw[NET_MAX], *type[NET_MAX], *addr[NET_MAX], *inet[NET_MAX], *reach[NET_MAX], *iso[NET_MAX], *via[NET_MAX];
+    unsigned long ip[NET_MAX], mask[NET_MAX];
+    char auth[256], enc[256], nofw[256], tmp[256], cur[256], curup[64], curupkey[80], countstr[4];
+    char lanip[20], lanmask[20], dstart[20], dend[20];
+    int count, n, m, wifi, nat[NET_MAX], bridged = 0, ch;
+    struct setup_old { int id; char old[256]; } *olds;
+    int nold = 0;
+    if (req->method != METHOD_POST) { WEB_printf(req,"ERROR: POST required"); return; }
+    if (wifi_ui_busy) { WEB_printf(req,"ERROR: configuration is busy"); return; }
+    uplink = WEB_query(req,"UPLINK");
+    if (!uplink || (strcmp(uplink,"cable") && strcmp(uplink,"wifi"))) { WEB_printf(req,"ERROR: UPLINK must be cable or wifi"); return; }
+    wifi = !strcmp(uplink,"wifi");
+    channel = WEB_query(req,"CHANNEL");
+    ch = channel ? strtol(channel,&end,10) : 0;
+    if (!channel || *end || ch < 1 || ch > 13) { WEB_printf(req,"ERROR: CHANNEL must be 1-13 (with a Wi-Fi uplink, the uplink's channel)"); return; }
+    upssid = WEB_query(req,"UPLINK_SSID"); upsec = WEB_query(req,"UPLINK_SECURITY");
+    upkey = WEB_query(req,"UPLINK_PASSWORD"); bssid = WEB_query(req,"UPLINK_BSSID");
+    eth = WEB_query(req,"ETHERNET"); dhcp1 = WEB_query(req,"DHCP1");
+    if (wifi) {
+        if (!wifi_ui_text(upssid,1,32)) { WEB_printf(req,"ERROR: UPLINK_SSID must be 1-32 bytes"); return; }
+        if (!upsec || (strcmp(upsec,"open") && strcmp(upsec,"wpa2") && strcmp(upsec,"mixed"))) { WEB_printf(req,"ERROR: UPLINK_SECURITY must be wpa2, mixed or open"); return; }
+        if (strcmp(upsec,"open") && (!upkey || !*upkey)) {
+            curup[0] = curupkey[0] = 0;
+            CFG_get_str(CFG_WLN_ApCliSsid,curup);
+            CFG_get_str(CFG_WLN_ApCliWPAPSK,curupkey);
+            if (!strcmp(curup,upssid)) upkey = curupkey;
+        }
+        if (strcmp(upsec,"open") && !wifi_ui_key(upkey)) { WEB_printf(req,"ERROR: UPLINK_PASSWORD must be 8-63 ASCII characters"); return; }
+        if (bssid && *bssid && !wifi_ui_mac(bssid)) { WEB_printf(req,"ERROR: UPLINK_BSSID must be aa:bb:cc:dd:ee:ff or empty"); return; }
+        if (eth && strcmp(eth,"net1") && strcmp(eth,"internet")) { WEB_printf(req,"ERROR: ETHERNET must be net1 or internet"); return; }
+        if (eth && !strcmp(eth,"internet")) bridged = 1;
+    }
+    if (dhcp1 && strcmp(dhcp1,"0") && strcmp(dhcp1,"1")) { WEB_printf(req,"ERROR: DHCP1 must be 0 or 1"); return; }
+    v = WEB_query(req, "COUNT");
+    if (!v || strlen(v) != 1 || *v < '1' || *v > '0' + NET_MAX) { WEB_printf(req,"ERROR: COUNT must be 1-7"); return; }
+    count = *v - '0';
+    for (n = 0; n < count; n++) {
+        ip[n] = mask[n] = 0;
+        sprintf(key, "SSID%d", n + 1); ssid[n] = WEB_query(req, key);
+        sprintf(key, "SECURITY%d", n + 1); sec[n] = WEB_query(req, key);
+        sprintf(key, "PASSWORD%d", n + 1); pw[n] = WEB_query(req, key);
+        sprintf(key, "TYPE%d", n + 1); type[n] = WEB_query(req, key);
+        sprintf(key, "ADDRESS%d", n + 1); addr[n] = WEB_query(req, key);
+        sprintf(key, "INTERNET%d", n + 1); inet[n] = WEB_query(req, key);
+        sprintf(key, "REACH%d", n + 1); reach[n] = WEB_query(req, key);
+        sprintf(key, "ISOLATE%d", n + 1); iso[n] = WEB_query(req, key);
+        sprintf(key, "VIA%d", n + 1); via[n] = WEB_query(req, key);
+        if (!wifi_ui_text(ssid[n],1,32)) { WEB_printf(req,"ERROR: SSID%d must be 1-32 bytes", n + 1); return; }
+        if (!sec[n] || (strcmp(sec[n],"open") && strcmp(sec[n],"wpa2"))) { WEB_printf(req,"ERROR: SECURITY%d must be open or wpa2", n + 1); return; }
+        if (!strcmp(sec[n],"wpa2") && (!pw[n] || !*pw[n])) {
+            cur[0] = 0; CFG_get_str(CFG_WLN_AuthMode, cur);
+            net_list_get(tmp, cur, n);
+            cur[0] = 0; CFG_get_str(net_key_ids[n], cur);
+            if (strncmp(tmp,"WPA2PSK",7) || !wifi_ui_key(cur)) { WEB_printf(req,"ERROR: PASSWORD%d is required (8-63 ASCII characters)", n + 1); return; }
+            pw[n] = 0;
+        } else if (!strcmp(sec[n],"wpa2") && !wifi_ui_key(pw[n])) { WEB_printf(req,"ERROR: PASSWORD%d must be 8-63 ASCII characters", n + 1); return; }
+        if (!type[n] || (strcmp(type[n],"nat") && strcmp(type[n],"bridge"))) { WEB_printf(req,"ERROR: TYPE%d must be nat or bridge", n + 1); return; }
+        nat[n] = !strcmp(type[n],"nat");
+        if (!nat[n]) bridged = 1;
+        if (nat[n]) {
+            if (!addr[n] || net_extra_parse(addr[n], &ip[n], &mask[n])) { WEB_printf(req,"ERROR: ADDRESS%d must be IPv4/prefix (8-30), for example 10.0.%d.1/24", n + 1, n + 1); return; }
+            if (inet[n] && strcmp(inet[n],"0") && strcmp(inet[n],"1")) { WEB_printf(req,"ERROR: INTERNET%d must be 0 or 1", n + 1); return; }
+            if (reach[n] && !net_reach_ok(reach[n])) { WEB_printf(req,"ERROR: REACH%d: comma list of device, lan, net1 ... net7, wg", n + 1); return; }
+            if (via[n] && strcmp(via[n],"wan") && strcmp(via[n],"wg")) { WEB_printf(req,"ERROR: VIA%d must be wan or wg", n + 1); return; }
+        }
+        if (iso[n] && strcmp(iso[n],"0") && strcmp(iso[n],"1")) { WEB_printf(req,"ERROR: ISOLATE%d must be 0 or 1", n + 1); return; }
+    }
+    if (wifi && eth && !strcmp(eth,"net1") && bridged) { WEB_printf(req,"ERROR: ETHERNET=net1 needs network 1 as NAT and no bridged network; use ETHERNET=internet"); return; }
+    /* no overlapping ranges among NAT networks and WireGuard */
+    {
+        unsigned long wip = 0, wmask = 0;
+        tmp[0] = 0; CFG_get_str(CFG_SYS_WG_ADDR, tmp);
+        if (tmp[0]) net_extra_parse(tmp, &wip, &wmask);
+        for (n = 0; n < count; n++) {
+            unsigned long mm;
+            if (!ip[n]) continue;
+            mm = mask[n] & wmask;
+            if (wip && (ip[n] & mm) == (wip & mm)) { WEB_printf(req,"ERROR: ADDRESS%d overlaps the WireGuard network", n + 1); return; }
+            for (m = 0; m < n; m++) {
+                mm = mask[n] & mask[m];
+                if (ip[m] && (ip[n] & mm) == (ip[m] & mm)) { WEB_printf(req,"ERROR: ADDRESS%d overlaps ADDRESS%d", n + 1, m + 1); return; }
+            }
+        }
+    }
+    if (nat[0] && !bridged) {
+        /* network 1 is the SDK LAN: address, mask and its DHCP pool */
+        struct in_addr a;
+        unsigned long base = ntohl(ip[0] & mask[0]);
+        a.s_addr = ip[0]; strcpy(lanip, inet_ntoa(a));
+        a.s_addr = mask[0]; strcpy(lanmask, inet_ntoa(a));
+        a.s_addr = htonl(base + 100); strcpy(dstart, inet_ntoa(a));
+        a.s_addr = htonl(base + 199 < ntohl(ip[0] | ~mask[0]) ? base + 199 : ntohl(ip[0] | ~mask[0]) - 1); strcpy(dend, inet_ntoa(a));
+    }
+    /* apply; on a failed set every changed item gets its old value back */
+    olds = calloc(64, sizeof(*olds));
+    if (!olds) { WEB_printf(req,"ERROR: insufficient memory"); return; }
+#define SET(k,val) do { if (nold >= 64) goto fail; olds[nold].id = (k); olds[nold].old[0] = 0; CFG_get_str((k), olds[nold].old); nold++; \
+                        if (CFG_set_str((k),(char *)(val)) < 0) goto fail; } while (0)
+    if (!bridged) {
+        SET(CFG_SYS_OPMODE, wifi ? "2" : "1");
+        SET(CFG_LAN_IP_MODE, "1");
+        SET(CFG_LAN_IP, lanip);
+        SET(CFG_LAN_MSK, lanmask);
+        SET(CFG_LAN_DHCPD_START, dstart);
+        SET(CFG_LAN_DHCPD_END, dend);
+        SET(CFG_LAN_DHCPD_EN, dhcp1 && !strcmp(dhcp1,"0") ? "0" : "1");
+        if (!wifi) SET(CFG_WAN_IP_MODE, "2");
+        SET(CFG_SYS_NET1_IP, "");
+    } else {
+        SET(CFG_SYS_OPMODE, "3");
+        SET(CFG_LAN_IP_MODE, "0");
+        SET(CFG_LAN_DHCPD_EN, "0");
+        SET(CFG_SYS_NET1_IP, nat[0] ? addr[0] : "");
+    }
+    SET(CFG_WLN_ApCliEnable, wifi ? "1" : "0");
+    /* bridged clients behind a Wi-Fi uplink need the driver's MAC repeater */
+    SET(CFG_WLN_MACRepeaterEn, wifi && bridged ? "1" : "0");
+    if (wifi) {
+        SET(CFG_WLN_ApCliSsid, upssid);
+        SET(CFG_WLN_ApCliBssid, bssid ? bssid : "");
+        SET(CFG_WLN_ApCliAuthMode, !strcmp(upsec,"open") ? "OPEN" : !strcmp(upsec,"mixed") ? "WPAPSKWPA2PSK" : "WPA2PSK");
+        SET(CFG_WLN_ApCliEncrypType, !strcmp(upsec,"open") ? "NONE" : !strcmp(upsec,"mixed") ? "TKIPAES" : "AES");
+        SET(CFG_WLN_ApCliWPAPSK, !strcmp(upsec,"open") ? "" : upkey);
+    }
+    SET(CFG_WLN_EN, "1");
+    SET(CFG_WLN_AutoSSID, "1");
+    SET(CFG_WLN_WirelessMode, "9");
+    SET(CFG_WLN_HT_BW, "0");
+    SET(CFG_WLN_AutoChannelSelect, "0");
+    SET(CFG_WLN_Channel, channel);
+    auth[0] = enc[0] = nofw[0] = 0;
+    CFG_get_str(CFG_WLN_AuthMode, auth);
+    CFG_get_str(CFG_WLN_EncrypType, enc);
+    CFG_get_str(CFG_WLN_NoForwarding, nofw);
+    for (n = 0; n < count; n++) {
+        net_list_set(tmp, auth, n, strcmp(sec[n],"open") ? "WPA2PSK" : "OPEN", "OPEN"); strcpy(auth, tmp);
+        net_list_set(tmp, enc, n, strcmp(sec[n],"open") ? "AES" : "NONE", "NONE"); strcpy(enc, tmp);
+        net_list_set(tmp, nofw, n, iso[n] && !strcmp(iso[n],"1") ? "1" : "0", "0"); strcpy(nofw, tmp);
+        SET(net_ssid_ids[n], ssid[n]);
+        if (pw[n]) SET(net_key_ids[n], strcmp(sec[n],"open") ? pw[n] : "");
+        if (n) SET(net_ip_ids[n - 1], nat[n] ? addr[n] : "");
+        SET(n ? net_inet_ids[n - 1] : CFG_SYS_NET1_INTERNET, nat[n] && inet[n] ? inet[n] : "1");
+        SET(n ? net_reach_ids[n - 1] : CFG_SYS_NET1_REACH, nat[n] && reach[n] ? reach[n] : (n ? "" : "device"));
+        SET(n ? net_via_ids[n - 1] : CFG_SYS_NET1_VIA, nat[n] && via[n] ? via[n] : "wan");
+    }
+    sprintf(countstr, "%d", count);
+    SET(CFG_WLN_BssidNum, countstr);
+    SET(CFG_WLN_AuthMode, auth);
+    SET(CFG_WLN_EncrypType, enc);
+    SET(CFG_WLN_NoForwarding, nofw);
+#undef SET
+    free(olds);
+    CFG_commit(CFG_NO_EVENT);
+    if (CFG_save_user()) { WEB_printf(req,"ERROR: saving to flash failed"); return; }
+    WEB_printf(req,"OK");
+    mon_snd_cmd(MON_CMD_REBOOT);
+    return;
+fail:
+    while (nold-- > 0) CFG_set_str(olds[nold].id, olds[nold].old);
+    free(olds);
+    CFG_commit(CFG_NO_EVENT);
+    WEB_printf(req,"ERROR: settings could not be applied");
 }
 
 /* Site survey as JSON; the page parses the driver's fixed-width table. */
