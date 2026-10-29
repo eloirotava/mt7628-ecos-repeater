@@ -176,6 +176,9 @@ legend{font-weight:600;padding:0 4px}
 <label for="wg-keepalive">Persistent keepalive (seconds)</label>
 <input id="wg-keepalive" inputmode="numeric" maxlength="4">
 <small>25 keeps the tunnel open through NAT; 0 disables.</small>
+<label for="wg-watchdog">Restart when the tunnel is down for (minutes)</label>
+<input id="wg-watchdog" inputmode="numeric" maxlength="4" placeholder="0">
+<small>0 turns this off. Otherwise 5–1440: without a WireGuard session for that long (since start-up or the last connected moment), the device restarts and tries again from scratch — useful when nobody is on site.</small>
 <label for="wg-dns">DNS for networks sent through the tunnel</label>
 <input id="wg-dns" maxlength="15" autocomplete="off" spellcheck="false" placeholder="1.1.1.1">
 <small>Offered by DHCP to networks whose Internet goes through WireGuard (the upstream router's DNS is not reachable from there).</small>
@@ -213,6 +216,25 @@ legend{font-weight:600;padding:0 4px}
 <p id="startup-msg" class="msg" role="status" aria-live="polite"></p>
 </section>
 </form>
+
+<section aria-labelledby="h-name">
+<h2 id="h-name">Device name</h2>
+<label for="mdns-name">Name on the network (mDNS)</label>
+<input id="mdns-name" maxlength="63" autocomplete="off" spellcheck="false" placeholder="extender">
+<small id="mdns-hint">Reachable as http://&lt;name&gt;.local/ from computers and phones on its networks, without knowing its address. Letters, digits and “-”; empty turns it off.</small>
+<div class="row"><button type="button" id="mdns-save" class="secondary">Save name</button></div>
+<p id="mdns-msg" class="msg" role="status" aria-live="polite"></p>
+</section>
+
+<section aria-labelledby="h-backup">
+<h2 id="h-backup">Settings file</h2>
+<p class="hint">Download every setting as a text file and restore it later, for example after a factory reset. The file contains the Wi-Fi, uplink and admin passwords: keep it private. The WireGuard device key is never included; a restored device keeps its own key.</p>
+<div class="row"><button type="button" id="backup" class="secondary">Download settings</button></div>
+<label for="restore-file">Restore from a file</label>
+<input id="restore-file" type="file" accept=".txt,text/plain">
+<div class="row"><button type="button" id="restore" class="danger">Restore &amp; restart</button></div>
+<p id="backup-msg" class="msg" role="status" aria-live="polite"></p>
+</section>
 
 <section aria-labelledby="h-system">
 <h2 id="h-system">System</h2>
@@ -372,6 +394,7 @@ function fillForms() {
   $('uplink-security').value = securityName(state.security);
   $('ethernet').value = state.ethernet === 'internet' ? 'internet' : 'net1';
   $('admin-user').value = state.admin_user || 'admin';
+  $('mdns-name').value = state.mdns_name || '';
   var nets = state.networks || [];
   $('net-count').value = String(Math.max(1, nets.filter(function (x) { return x.enabled; }).length));
   for (var n = 1; n <= NET_MAX; n++) {
@@ -400,6 +423,7 @@ function fillForms() {
   $('wg-wss-key').value = wg.wss_key || '';
   $('wg-wss-fields').hidden = !$('wg-wss').checked;
   $('wg-dns').value = wg.dns || '1.1.1.1';
+  $('wg-watchdog').value = String(wg.watchdog || 0);
   update();
 }
 
@@ -626,7 +650,8 @@ $('wg-form').addEventListener('submit', async function (e) {
   if (!/^\d{1,5}$/.test(port) || +port < 1 || +port > 65535) return msg(out, 'Server port: 1–65535.', 'bad');
   if (!/^\d{1,4}$/.test(ka) || +ka > 3600) return msg(out, 'Keepalive: 0–3600 seconds.', 'bad');
   if (psk && !key44.test(psk)) return msg(out, 'Preshared key: 44 base64 characters ending in “=”.', 'bad');
-  var dns = $('wg-dns').value.trim();
+  var dns = $('wg-dns').value.trim(), wd = $('wg-watchdog').value.trim() || '0';
+  if (!/^\d{1,4}$/.test(wd) || (+wd !== 0 && (+wd < 5 || +wd > 1440))) return msg(out, 'Watchdog: 0 (off) or 5–1440 minutes.', 'bad');
   if (dns && !/^(\d{1,3}\.){3}\d{1,3}$/.test(dns)) return msg(out, 'DNS: an IPv4 address, for example 1.1.1.1.', 'bad');
   if (en && (!addr || !peer || !host)) return msg(out, 'Enter the tunnel address, server public key and endpoint to enable WireGuard.', 'bad');
   if (en && !state.admin_password_set) return msg(out, 'Set an admin password first (Administration).', 'bad');
@@ -643,6 +668,7 @@ $('wg-form').addEventListener('submit', async function (e) {
   if (wss || wpath) body.set('WSS_PATH', wpath);
   body.set('WSS_NAME', wname); body.set('WSS_KEY', wkey);
   body.set('DNS', dns || '1.1.1.1');
+  body.set('WATCHDOG', String(+wd));
   try {
     var text = await post('/wg_apply.html', body, 5000);
     if (text !== 'OK') throw new Error(text.replace(/^ERROR:\s*/, ''));
@@ -695,6 +721,46 @@ async function system(action, question, done) {
   }
   msg($('system-msg'), done);
 }
+$('mdns-save').addEventListener('click', async function () {
+  var out = $('mdns-msg'), name = $('mdns-name').value.trim(), body = new URLSearchParams();
+  if (name && !/^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(name)) return msg(out, 'Name: letters, digits and “-” (not at the ends), up to 63; or empty.', 'bad');
+  body.set('ACTION', 'name'); body.set('NAME', name);
+  try {
+    var text = await post('/system_apply.html', body);
+    if (text !== 'OK') throw new Error(text.replace(/^ERROR:\s*/, ''));
+    msg(out, name ? 'Saved. The device answers as ' + name + '.local now.' : 'Saved. mDNS is off.', 'good');
+  } catch (err) { msg(out, err.message || 'Could not save the name.', 'bad'); }
+});
+$('backup').addEventListener('click', async function () {
+  var out = $('backup-msg');
+  try {
+    var r = await fetch('/config_backup.html?t=' + Date.now(), {cache: 'no-store', signal: AbortSignal.timeout(10000)});
+    var text = await r.text();
+    if (!/^#PROFILE/.test(text)) throw new Error(text.replace(/^ERROR:\s*/, '') || 'Could not read the settings.');
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], {type: 'text/plain'}));
+    a.download = (state.mdns_name || 'extender') + '-settings.txt';
+    document.body.appendChild(a); a.click(); a.remove();
+    msg(out, 'Settings downloaded. Keep the file private: it contains passwords.', 'good');
+  } catch (err) { msg(out, err.message || 'Could not download the settings.', 'bad'); }
+});
+$('restore').addEventListener('click', async function () {
+  var out = $('backup-msg'), f = ($('restore-file').files || [])[0];
+  if (!state.admin_password_set) return msg(out, 'Set an admin password first (Administration).', 'bad');
+  if (!f) return msg(out, 'Choose a settings file first.', 'bad');
+  if (f.size > 16000) return msg(out, 'That file is too large to be a settings file.', 'bad');
+  if (!window.confirm('Replace the settings with “' + f.name + '” and restart the device?')) return;
+  var body = new FormData();
+  body.append('config', f, f.name);
+  try {
+    var text = await post('/config_restore.html', body, 10000);
+    if (text !== 'OK') throw new Error(text.replace(/^ERROR:\s*/, ''));
+    msg(out, 'Restored. Restarting… reconnect with the restored settings in about one minute.', 'good');
+  } catch (err) {
+    if (err.name !== 'TimeoutError' && err.name !== 'TypeError') return msg(out, err.message, 'bad');
+    msg(out, 'Restarting… reconnect with the restored settings in about one minute.', 'good');
+  }
+});
 $('reboot').addEventListener('click', function () { system('reboot', 'Restart the device now?', 'Restarting… reload this page in about one minute.'); });
 $('factory').addEventListener('click', function () { system('factory', 'Erase all settings and restore factory defaults? The device restarts with an open network named “Extender-<MAC>” and no admin password.', 'Restoring defaults… reconnect to the “Extender-…” network in about one minute.'); });
 

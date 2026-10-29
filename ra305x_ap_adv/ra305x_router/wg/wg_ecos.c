@@ -63,6 +63,25 @@ static long uptime(void) { return (long)(cyg_current_time() / 100); }
 static char wss_error[160]; /* last WSS problem, kept after a fallback to UDP */
 const char *wg_ecos_wss_error(void) { return wss_error; }
 
+/* Watchdog: with SYS_WG_WATCHDOG minutes > 0, restart the device when the
+ * tunnel has had no session for that long (counted from start-up or from the
+ * last connected moment). A restart retries everything from scratch (uplink,
+ * DHCP, DNS, WSS) and needs nobody on site. */
+static long wd_ok;          /* uptime of the last moment with a session */
+static int wd_minutes, wd_fired;
+static void watchdog_tick(void)
+{
+	long now = (long)(cyg_current_time() / 100);
+	if (!wd_minutes || wd_fired) return;
+	if (state == WG_CONNECTED) { wd_ok = now; return; }
+	if (now - wd_ok >= (long)wd_minutes * 60) {
+		wd_fired = 1;
+		diag_printf("wg: no session for %d minutes, restarting (watchdog)\n", wd_minutes);
+		mon_snd_cmd(MON_CMD_REBOOT);
+	}
+}
+int wg_ecos_watchdog_minutes(void) { return wd_minutes; }
+
 static void set_status(int s, const char *m)
 {
 	if (!strncmp(m, "WSS:", 4)) { strncpy(wss_error, m, sizeof wss_error - 1); wss_error[sizeof wss_error - 1] = 0; }
@@ -425,6 +444,7 @@ static void rx_thread(cyg_addrword_t arg)
 			n = recv(sock, rx_buf, sizeof rx_buf, 0);
 		}
 		now = uptime();
+		watchdog_tick();
 		cyg_mutex_lock(&lock);
 		if (n > 0) {
 			switch (wg_msg_type(rx_buf, (size_t)n)) {
@@ -558,6 +578,11 @@ static void boot_thread(cyg_addrword_t arg)
 		CFG_get_str(CFG_SYS_WG_WSS_KEY, val);
 		if (wss_path[0] != '/' || unhex32(wss_key, val)) { set_status(WG_ERROR, "Not started: WSS needs a path and the server's Ed25519 key"); return; }
 	}
+	val[0] = 0;
+	CFG_get_str(CFG_SYS_WG_WATCHDOG, val);
+	wd_minutes = atoi(val);
+	if (wd_minutes < 0 || wd_minutes > 1440) wd_minutes = 0;
+	wd_ok = uptime();
 	CFG_get_str(CFG_SYS_WG_KEEPALIVE, val);
 	keepalive = (unsigned)atoi(val);
 	if (keepalive > 3600) keepalive = 25;
@@ -577,6 +602,7 @@ static void boot_thread(cyg_addrword_t arg)
 
 	set_status(WG_CLOCK, "Waiting for network time (SNTP) and the endpoint address");
 	for (tries = 0; ; tries++) {
+		watchdog_tick();
 		if (!clock_base_unix && sntp_sync() == 0) diag_printf("wg: clock synchronized\n");
 		if (clock_base_unix && !dns_resolve(host, ip)) break;
 		cyg_thread_delay(tries < 6 ? 500 : 3000);

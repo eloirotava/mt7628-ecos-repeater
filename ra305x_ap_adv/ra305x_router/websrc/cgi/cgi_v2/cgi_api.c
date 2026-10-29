@@ -29,6 +29,7 @@
 #include <sys/types.h>
 #include <network.h>
 #include <stdio.h>
+#include <ctype.h>
 #include <netinet/if_ether.h>
 #include <sys/mbuf.h>
 #include <sys/types.h>
@@ -351,6 +352,12 @@ void CGI_wifi_state(http_req *req)
         CFG_get_str(CFG_SYS_WG_PORT, val);
         WEB_printf(req, ",\"port\":%d", atoi(val));
         CFG_get_str(CFG_SYS_WG_KEEPALIVE, val);
+        {
+            extern int wg_ecos_watchdog_minutes(void);
+            char wd[8];
+            wd[0] = '\0'; CFG_get_str(CFG_SYS_WG_WATCHDOG, wd);
+            WEB_printf(req, ",\"watchdog\":%d", atoi(wd));
+        }
         WEB_printf(req, ",\"keepalive\":%d,\"dns\":", atoi(val));
         val[0] = '\0'; CFG_get_str(CFG_SYS_WG_DNS, val); wifi_ui_json(req, val[0] ? val : "1.1.1.1");
         val[0] = '\0'; CFG_get_str(CFG_SYS_WG_TRANSPORT, val);
@@ -390,6 +397,8 @@ void CGI_wifi_state(http_req *req)
         }
         WEB_printf(req, "]");
     }
+    val[0] = '\0'; CFG_get_str(CFG_SYS_MDNS_NAME, val);
+    WEB_printf(req, ",\"mdns_name\":"); wifi_ui_json(req, val);
     net_state(req);
     WEB_printf(req, ",\"firmware\":{\"busy\":%d,\"state\":", ramboot_web_busy());
     wifi_ui_json(req, ramboot_web_state());
@@ -7221,7 +7230,7 @@ static int wg_ui_cidr(const char *s)
 
 void CGI_wg_apply(http_req *req)
 {
-    char cur[256], *en, *addr, *peer, *host, *port, *ka, *psk, *dns, *end, *tr, *wpath, *wname, *wkey;
+    char cur[256], *en, *addr, *peer, *host, *port, *ka, *psk, *dns, *end, *tr, *wpath, *wname, *wkey, *wd;
     unsigned char tmp[32];
     long p, k;
     if (req->method != METHOD_POST) { WEB_printf(req,"ERROR: POST required"); return; }
@@ -7229,6 +7238,11 @@ void CGI_wg_apply(http_req *req)
     host = WEB_query(req,"ENDPOINT"); port = WEB_query(req,"PORT"); ka = WEB_query(req,"KEEPALIVE");
     psk = WEB_query(req,"PRESHARED_KEY");
     dns = WEB_query(req,"DNS");
+    wd = WEB_query(req,"WATCHDOG");
+    if (wd && *wd) {
+        long w = strtol(wd, &end, 10);
+        if (*end || (w != 0 && (w < 5 || w > 1440))) { WEB_printf(req,"ERROR: WATCHDOG must be 0 (off) or 5-1440 minutes"); return; }
+    }
     tr = WEB_query(req,"TRANSPORT"); wpath = WEB_query(req,"WSS_PATH"); wname = WEB_query(req,"WSS_NAME"); wkey = WEB_query(req,"WSS_KEY");
     if (tr && strcmp(tr,"udp") && strcmp(tr,"wss")) { WEB_printf(req,"ERROR: TRANSPORT must be udp or wss"); return; }
     if (wpath && *wpath) {
@@ -7276,6 +7290,7 @@ void CGI_wg_apply(http_req *req)
         CFG_set_str(CFG_SYS_WG_PORT,port) < 0 || CFG_set_str(CFG_SYS_WG_KEEPALIVE,cur) < 0 ||
         (psk && strcmp(psk,"keep") && CFG_set_str(CFG_SYS_WG_PSK,psk) < 0) ||
         (dns && CFG_set_str(CFG_SYS_WG_DNS, *dns ? dns : "1.1.1.1") < 0) ||
+        (wd && CFG_set_str(CFG_SYS_WG_WATCHDOG, *wd ? wd : "0") < 0) ||
         (tr && CFG_set_str(CFG_SYS_WG_TRANSPORT,tr) < 0) || (wpath && CFG_set_str(CFG_SYS_WG_WSS_PATH,wpath) < 0) ||
         (wname && CFG_set_str(CFG_SYS_WG_WSS_NAME,wname) < 0) || (wkey && CFG_set_str(CFG_SYS_WG_WSS_KEY,wkey) < 0)) { WEB_printf(req,"ERROR: settings could not be applied"); return; }
     CFG_commit(CFG_NO_EVENT);
@@ -7774,8 +7789,62 @@ void CGI_system_apply(http_req *req)
     } else if (action && !strcmp(action,"factory")) {
         WEB_printf(req,"OK");
         CGI_reset_default();
+    } else if (action && !strcmp(action,"name")) {
+        /* mDNS host name (<name>.local): letters, digits and '-', 1-63; empty turns it off */
+        char *name = WEB_query(req,"NAME");
+        int i, n = name ? (int)strlen(name) : -1;
+        if (n < 0 || n > 63 || (n && (name[0] == '-' || name[n - 1] == '-'))) { WEB_printf(req,"ERROR: NAME must be 1-63 letters, digits or '-' (not at the ends), or empty"); return; }
+        for (i = 0; i < n; i++)
+            if (!isalnum((unsigned char)name[i]) && name[i] != '-') { WEB_printf(req,"ERROR: NAME must be 1-63 letters, digits or '-' (not at the ends), or empty"); return; }
+        if (CFG_set_str(CFG_SYS_MDNS_NAME, name) < 0) { WEB_printf(req,"ERROR: settings could not be applied"); return; }
+        CFG_commit(CFG_NO_EVENT);
+        if (CFG_save_user()) { WEB_printf(req,"ERROR: saving to flash failed"); return; }
+        WEB_printf(req,"OK");
     } else
-        WEB_printf(req,"ERROR: ACTION must be reboot or factory");
+        WEB_printf(req,"ERROR: ACTION must be reboot, factory or name");
+}
+
+/* GET /config_backup.html: all settings as text (NAME=value lines), except
+ * the WireGuard device key and the entropy seed, which never leave the
+ * device. Contains the Wi-Fi, uplink and admin passwords. */
+void CGI_config_backup(http_req *req)
+{
+    extern int CFG_backup_text(char *buf, int size);
+    char *buf;
+    int n, i;
+    buf = malloc(16384);
+    if (!buf) { WEB_printf(req,"ERROR: insufficient memory"); return; }
+    n = CFG_backup_text(buf, 16384);
+    if (n < 0) { free(buf); WEB_printf(req,"ERROR: settings could not be read"); return; }
+    for (i = 0; i < n; i += 256)
+        WEB_printf(req, "%.*s", n - i < 256 ? n - i : 256, buf + i);
+    free(buf);
+}
+
+/* POST /config_restore.html (multipart field "config", a file from
+ * config_backup): applies every setting in it except the device key and
+ * seed, saves and restarts. Needs an admin password. */
+void CGI_config_restore(http_req *req)
+{
+    extern int CFG_restore_text(char *buf, int n);
+    char cur[80], *file, *copy;
+    int len = 0;
+    if (req->method != METHOD_POST) { WEB_printf(req,"ERROR: POST required"); return; }
+    cur[0] = '\0';
+    CFG_get_str(CFG_SYS_ADMPASS, cur);
+    if (!cur[0]) { WEB_printf(req,"ERROR: set an admin password before restoring settings"); return; }
+    file = WEB_upload_file(req, "config", &len);
+    if (!file || len <= 0 || len > 16000) { WEB_printf(req,"ERROR: no settings file (multipart field \"config\", up to 16000 bytes)"); return; }
+    copy = malloc(len + 1);
+    if (!copy) { WEB_printf(req,"ERROR: insufficient memory"); return; }
+    memcpy(copy, file, len);
+    copy[len] = 0;
+    if (CFG_restore_text(copy, len)) { free(copy); WEB_printf(req,"ERROR: this is not a settings file from this device's backup"); return; }
+    free(copy);
+    CFG_commit(CFG_NO_EVENT);
+    if (CFG_save_user()) { WEB_printf(req,"ERROR: saving to flash failed"); return; }
+    WEB_printf(req,"OK");
+    mon_snd_cmd(MON_CMD_REBOOT);
 }
 
 static int wifi_ui_uplink_connected(void)

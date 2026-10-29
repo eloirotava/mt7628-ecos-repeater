@@ -170,6 +170,19 @@ const submit = f => f.els['setup-form'].listeners.submit({preventDefault() {}});
   f = fixture(withWg({enabled: 1, state: 'connected', status: 'Connected to 164.163.10.88:51820', handshake_age: 12, rx_bytes: 2048, tx_bytes: 512}));
   assert.strictEqual(f.els['st-wg'].className, 'ok'); assert(f.els['st-wg'].textContent.includes('handshake 12 s ago')); assert(f.els['st-wg'].textContent.includes('2.0 KB'));
 
+  /* Watchdog, device name, restore */
+  f = fixture(withWg({enabled: 1, address: '10.8.0.30/24', peer_public_key: WGK, endpoint: 'br.example', watchdog: 0}));
+  assert.strictEqual(f.els['wg-watchdog'].value, '0');
+  f.els['wg-watchdog'].value = '3'; await f.els['wg-form'].listeners.submit({preventDefault() {}}); assert.strictEqual(f.posts().length, 0); assert(f.els['wg-msg'].textContent.includes('Watchdog'));
+  f.els['wg-watchdog'].value = '30'; await f.els['wg-form'].listeners.submit({preventDefault() {}}); assert.strictEqual(f.posts()[0].options.body.get('WATCHDOG'), '30');
+  f = fixture(Object.assign({}, base, {mdns_name: 'extender'}));
+  assert.strictEqual(f.els['mdns-name'].value, 'extender');
+  f.els['mdns-name'].value = '-bad'; await f.els['mdns-save'].listeners.click(); assert.strictEqual(f.posts().length, 0);
+  f.els['mdns-name'].value = 'tomada'; await f.els['mdns-save'].listeners.click();
+  p = f.posts()[0]; assert.strictEqual(p.url, '/system_apply.html'); assert.strictEqual(p.options.body.get('ACTION'), 'name'); assert.strictEqual(p.options.body.get('NAME'), 'tomada');
+  f = fixture(base); f.els['restore-file'].files = [{name: 'x.txt', size: 100}];
+  await f.els.restore.listeners.click(); assert.strictEqual(f.posts().length, 0); assert(f.els['backup-msg'].textContent.includes('admin password'));
+
   /* Tabs (old #wireless / #networks links open the Network tab) */
   f = fixture(fbase);
   assert(!f.els['tab-status'].hidden && f.els['tab-network'].hidden && f.els['tab-system'].hidden);
