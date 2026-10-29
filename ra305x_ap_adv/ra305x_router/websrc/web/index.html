@@ -147,9 +147,9 @@ legend{font-weight:600;padding:0 4px}
 <form id="networks-form" novalidate>
 <section aria-labelledby="h-networks">
 <h2 id="h-networks">Wi-Fi networks</h2>
-<p class="hint">Network 1 is the device network set under Wireless. Networks 2–4 are extra SSIDs on the same radio and channel: bridged with network 1, or — in router mode — routed with their own address range, DHCP and the access you allow below.</p>
+<p class="hint">Network 1 is the device network set under Wireless. Networks 2–7 are extra SSIDs on the same radio and channel: bridged with network 1, or — in router mode — routed with their own address range, DHCP and the access you allow below.</p>
 <label for="net-count">Active networks</label>
-<select id="net-count"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
+<select id="net-count"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option></select>
 <label class="check"><input type="checkbox" id="net1-isolate"> Network 1: clients cannot see each other</label>
 <div id="net-list"></div>
 <div class="row"><button type="submit">Save &amp; restart</button></div>
@@ -518,10 +518,11 @@ adminForm.addEventListener('submit', async function (e) {
   } catch (err) { msg(out, err.message || 'Could not save the credentials.', 'bad'); }
 });
 
-var REACH = [['device', 'This device'], ['lan', 'Network 1 / Ethernet'], ['net2', 'Network 2'], ['net3', 'Network 3'], ['net4', 'Network 4'], ['wg', 'WireGuard']];
+var NET_MAX = 7; /* 8 beacons on the radio, one kept for a Wi-Fi uplink */
+var REACH = [['device', 'This device'], ['lan', 'Network 1 / Ethernet']].concat([2, 3, 4, 5, 6, 7].map(function (n) { return ['net' + n, 'Network ' + n]; }), [['wg', 'WireGuard']]);
 (function () {
   var list = $('net-list');
-  for (var n = 2; n <= 4; n++) {
+  for (var n = 2; n <= NET_MAX; n++) {
     var fs = document.createElement('fieldset'); fs.id = 'net' + n + '-box';
     var lg = document.createElement('legend'); lg.textContent = 'Network ' + n; fs.appendChild(lg);
     function add(el) { fs.appendChild(el); return el; }
@@ -557,7 +558,7 @@ var REACH = [['device', 'This device'], ['lan', 'Network 1 / Ethernet'], ['net2'
 }());
 function netUpdate() {
   var count = +$('net-count').value, router = state.mode === 'router';
-  for (var n = 2; n <= 4; n++) {
+  for (var n = 2; n <= NET_MAX; n++) {
     $('net' + n + '-box').hidden = n > count;
     var routed = $('net' + n + '-routed').checked && router;
     $('net' + n + '-routed').disabled = !router;
@@ -572,7 +573,7 @@ function fillNetworks() {
   var nets = state.networks || [];
   $('net-count').value = String(Math.max(1, nets.filter(function (x) { return x.enabled; }).length));
   $('net1-isolate').checked = !!(nets[0] || {}).isolate;
-  for (var n = 2; n <= 4; n++) {
+  for (var n = 2; n <= NET_MAX; n++) {
     var x = nets[n - 1] || {};
     $('net' + n + '-ssid').value = x.ssid || '';
     $('net' + n + '-security').value = x.security === 'wpa2' ? 'wpa2' : 'open';

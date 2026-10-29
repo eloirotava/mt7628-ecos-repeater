@@ -704,8 +704,8 @@ static void napt_init(void)
 		/* routed extra Wi-Fi networks (init/net_extra.c) leave through the same WAN */
 		{
 			extern int net_extra_ifnames(char names[][8], int max);
-			char names[3][8];
-			int k, count = net_extra_ifnames(names, 3);
+			char names[6][8];
+			int k, count = net_extra_ifnames(names, 6);
 			extern int net_extra_via_wg(int n);
 			extern struct ifnet *ifunit(const char *name);
 			for (k = 0; k < count; k++) {

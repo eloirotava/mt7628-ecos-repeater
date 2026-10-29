@@ -1,4 +1,4 @@
-/* Extra Wi-Fi networks (SSID2..SSID4 on ra1..ra3). A network whose
+/* Extra Wi-Fi networks (SSID2..SSID7 on ra1..ra6). A network whose
  * SYS_NETn_IP holds an address/prefix (e.g. 10.0.2.1/24) is routed: it stays
  * out of the LAN bridge, gets that address, its own DHCP pool and NAT to the
  * WAN. An empty SYS_NETn_IP keeps it bridged with the LAN, as before. */
@@ -24,10 +24,10 @@ extern cyg_bool_t netif_alias_cfg(const char *intf, struct ip_set *setp);
 extern int DHCPS_net_start(const char *ifname, unsigned long ip, unsigned long mask, unsigned long dns);
 extern void FW_setrule(char *cmdbuf);
 
-static const int ip_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_IP, CFG_SYS_NET3_IP, CFG_SYS_NET4_IP };
-static const int reach_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_REACH, CFG_SYS_NET3_REACH, CFG_SYS_NET4_REACH };
-static const int internet_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_INTERNET, CFG_SYS_NET3_INTERNET, CFG_SYS_NET4_INTERNET };
-static const int via_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_VIA, CFG_SYS_NET3_VIA, CFG_SYS_NET4_VIA };
+static const int ip_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_IP, CFG_SYS_NET3_IP, CFG_SYS_NET4_IP, CFG_SYS_NET5_IP, CFG_SYS_NET6_IP, CFG_SYS_NET7_IP };
+static const int reach_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_REACH, CFG_SYS_NET3_REACH, CFG_SYS_NET4_REACH, CFG_SYS_NET5_REACH, CFG_SYS_NET6_REACH, CFG_SYS_NET7_REACH };
+static const int internet_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_INTERNET, CFG_SYS_NET3_INTERNET, CFG_SYS_NET4_INTERNET, CFG_SYS_NET5_INTERNET, CFG_SYS_NET6_INTERNET, CFG_SYS_NET7_INTERNET };
+static const int via_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_VIA, CFG_SYS_NET3_VIA, CFG_SYS_NET4_VIA, CFG_SYS_NET5_VIA, CFG_SYS_NET6_VIA, CFG_SYS_NET7_VIA };
 
 /* Network n (2..4) sends its Internet traffic through wg0. */
 int net_extra_via_wg(int n)
