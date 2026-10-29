@@ -214,6 +214,19 @@ cgi_cmd as_cgi_cmds[]=
 
 struct cfgobj_list_t;
 
+/* Open file descriptors (sockets included) out of CYGNUM_FILEIO_NFD; shown
+ * in the state to catch descriptor leaks ("Too many open files"). */
+#include <cyg/fileio/fileio.h>
+int wifi_ui_open_fds(void)
+{
+    int fd, n = 0;
+    for (fd = 0; fd < CYGNUM_FILEIO_NFD; fd++) {
+        cyg_file *fp = cyg_fp_get(fd);
+        if (fp) { n++; cyg_fp_free(fp); }
+    }
+    return n;
+}
+
 /* English AP/repeater UI. Explicit saves or volatile previews. */
 static volatile int wifi_ui_busy;
 static unsigned int wifi_ui_revision;
@@ -354,6 +367,10 @@ void CGI_wifi_state(http_req *req)
         WEB_printf(req, ",\"state\":\"%s\",\"status\":", st >= 0 && st <= 5 ? names[st] : "error");
         wifi_ui_json(req, wg_ecos_status());
         WEB_printf(req, ",\"handshake_age\":%ld,\"rx_bytes\":%lu,\"tx_bytes\":%lu}", wg_ecos_handshake_age(), rx, tx);
+        {
+            extern int wifi_ui_open_fds(void);
+            WEB_printf(req, ",\"open_fds\":%d", wifi_ui_open_fds());
+        }
     }
     {
         int n;

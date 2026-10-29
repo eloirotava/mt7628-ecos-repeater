@@ -162,7 +162,9 @@ static void timestamp(uint8_t out[12])
  * TLS 1.3 to the server pinned by its Ed25519 key (wstunnel v10 dialect).
  * Writers hold `lock`; the rx thread reads without it. A KeyUpdate answered
  * inside tls_read could race a write, but the server (rustls) never asks. */
-static int wss, wss_fd = -1;
+static int wss, wss_fd = -1, wss_fails;
+static long wss_since;      /* start of the current attempt to get a session over WSS */
+#define WSS_GIVE_UP 180     /* seconds without a session before falling back to UDP */
 static char wss_host[80], wss_name[80], wss_path[96];
 static uint8_t wss_key[32];
 static unsigned wss_port;
@@ -198,8 +200,24 @@ static int wss_connect(void)
 	if (dns_resolve(wss_host, ip)) { set_status(WG_HANDSHAKE, "WSS: endpoint name not resolved"); return -1; }
 	addr4(&a, ip, 443);
 	a.sin_len = sizeof a;
-	fd = tcp_open(&a, 15);
-	if (fd < 0) { set_status(WG_HANDSHAKE, "WSS: TCP connection to port 443 failed"); return -1; }
+	fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (fd < 0) {
+		snprintf(m, sizeof m, "WSS: no free socket (errno %d)", errno);
+		set_status(WG_HANDSHAKE, m);
+		return -1;
+	}
+	{
+		struct timeval tv = { 15, 0 };
+		setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
+		setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+		setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof one);
+	}
+	if (connect(fd, (struct sockaddr *)&a, sizeof a) < 0) {
+		snprintf(m, sizeof m, "WSS: TCP connection to %s:443 failed (errno %d)", inet_ntoa(a.sin_addr), errno);
+		set_status(WG_HANDSHAKE, m);
+		close(fd);
+		return -1;
+	}
 	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
 	err = tls_handshake(&wss_conn, fd, wss_name, 0, 0, wss_key, x_now() + 30);
 	if (err) {
@@ -236,6 +254,34 @@ fail:
 	set_status(WG_HANDSHAKE, "WSS: WebSocket upgrade failed");
 	close(fd);
 	return -1;
+}
+
+/* WSS did not give a session in time: carry on over UDP until the next
+ * restart, so the device stays reachable through the tunnel. */
+static int wss_to_udp(void)
+{
+	struct timeval tv = { 1, 0 };
+	uint8_t ip[4];
+	int s;
+	if (dns_resolve(wss_host, ip)) return -1;
+	s = socket(AF_INET, SOCK_DGRAM, 0);
+	if (s < 0) return -1;
+	setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+	cyg_mutex_lock(&lock);
+	if (wss_fd >= 0) close(wss_fd);
+	wss_fd = -1;
+	memset(&peer_addr, 0, sizeof peer_addr);
+	peer_addr.sin_len = sizeof peer_addr;
+	peer_addr.sin_family = AF_INET;
+	peer_addr.sin_port = htons((unsigned short)wss_port);
+	memcpy(&peer_addr.sin_addr, ip, 4);
+	sock = s;
+	wss = 0;
+	init_time = -1;
+	cyg_mutex_unlock(&lock);
+	set_status(WG_HANDSHAKE, "WSS did not connect in 3 minutes; using UDP until the next restart");
+	diag_printf("wg: WSS gave up, falling back to UDP\n");
+	return 0;
 }
 
 static void wss_drop(void)
@@ -329,15 +375,27 @@ static void rx_thread(cyg_addrword_t arg)
 	(void)arg;
 
 	if (!wss) setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+	wss_since = uptime();
 	for (;;) {
 		if (wss) {
+			/* no WireGuard session over WSS for 3 minutes: fall back to UDP */
+			if (state != WG_CONNECTED && uptime() - wss_since > WSS_GIVE_UP && !wss_to_udp())
+				continue;
 			if (wss_fd < 0) {
-				if (wss_connect()) { cyg_thread_delay(500); continue; }
+				if (wss_connect()) {
+					/* 5 s, 10 s, 20 s ... up to 60 s between attempts */
+					int d = 500 << (wss_fails < 4 ? wss_fails : 4);
+					wss_fails++;
+					cyg_thread_delay(d > 6000 ? 6000 : d);
+					continue;
+				}
+				wss_fails = 0;
 				init_time = -1; /* new path: handshake again right away */
 			}
 			n = wss_recv(rx_buf, sizeof rx_buf);
 			if (n < 0) {
 				wss_drop();
+				if (state == WG_CONNECTED) wss_since = uptime(); /* a working path gets 3 more minutes */
 				set_status(WG_HANDSHAKE, "WSS: connection lost; reconnecting");
 				continue;
 			}
