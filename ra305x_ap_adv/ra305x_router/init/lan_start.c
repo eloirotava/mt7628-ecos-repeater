@@ -331,6 +331,7 @@ int lan_set_ip(void)
     if ( lan_up == true )
 	{
     	lan_rescue_alias();
+	net_extra_lan_changed(); /* isolation rules use the LAN range */
 	/* Opmode 2/3 with a DHCP LAN (factory default is 2 with no Wi-Fi uplink):
 	 * the device is a host on the upstream network and needs the lease's
 	 * gateway for its own traffic (SNTP, WireGuard). A static LAN

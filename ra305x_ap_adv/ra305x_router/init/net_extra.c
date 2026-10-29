@@ -195,6 +195,21 @@ void net_extra_apply(void)
  * (TX before the BSS is ready -> crash in ParseTxSPacket). */
 static volatile int wifi_ready, fw_applied;
 void net_extra_fw_ready(void) { wifi_ready = 1; }
+
+#ifndef NET_EXTRA_HOST_TEST
+/* The LAN address is part of the isolation rules; in bridge-based setups it
+ * is a DHCP lease that arrives after the rules were loaded: rebuild them. */
+void net_extra_lan_changed(void)
+{
+	extern void FW_flush(void);
+	extern void FW_init(void);
+	char names[NET_EXTRA_MAX][8];
+	if (!wifi_ready || !net_extra_ifnames(names, NET_EXTRA_MAX)) return;
+	diag_printf("net: LAN address changed, reloading isolation rules\n");
+	FW_flush();
+	FW_init();
+}
+#endif
 void net_extra_fw_flushed(void) { fw_applied = 0; }
 
 /* comma list membership, e.g. has("lan,wg", "wg") */
@@ -220,6 +235,9 @@ static int prefix(unsigned long mask)
 static void rule(void (*set)(char *), const char *fmt, const char *ifn, unsigned long ip, int len)
 {
 	char buf[160], a[16];
+	/* an address not known yet (bridge-based LAN before its DHCP lease)
+	 * would turn into "to any" and block everything */
+	if (len == 0) return;
 	strcpy(a, inet_ntoa(*(struct in_addr *)&ip));
 	snprintf(buf, sizeof buf, fmt, ifn, a, len);
 	set(buf);
