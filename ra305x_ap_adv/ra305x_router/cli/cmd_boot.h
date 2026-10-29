@@ -2,7 +2,7 @@
 #ifndef CMD_BOOT_H
 #define CMD_BOOT_H
 
-#define CLI_BOOT_LINES 8
+#define CLI_BOOT_LINES 16
 #define CLI_BOOT_ARGV  25
 
 /* CLI_exec_line results besides the command's own return value */

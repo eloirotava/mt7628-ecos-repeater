@@ -49,7 +49,7 @@ int wg_ecos_public_key(char b64[45]) { strcpy(b64,"cfMOYfs5ZT4ic035jD9qCG4UM/Kgp
 long wg_ecos_handshake_age(void) { return 12; }
 void wg_ecos_counters(unsigned long *rx, unsigned long *tx) { *rx = 436; *tx = 380; }
 int wg_b64_decode32(unsigned char out[32], const char *s) { size_t i; (void)out; if (strlen(s) != 44 || s[43] != '=') return -1; for (i = 0; i < 43; i++) if (!strchr("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", s[i])) return -1; return 0; }
-const int CLI_boot_ids[8] = { 9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008 };
+const int CLI_boot_ids[16] = { 9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008, 9009, 9010, 9011, 9012, 9013, 9014, 9015, 9016 };
 const char *CLI_boot_result(int n) { return n == 0 ? "ok" : "unknown command"; }
 const char *ramboot_web_state(void) { return "idle"; }
 const char *ramboot_web_error(void) { return "none"; }
@@ -138,6 +138,11 @@ int main(void) {
  {static char longline[260];memset(longline,'a',201);longline[201]=0;SU(longline,"");CGI_startup_apply(&post);assert(strstr(output,"longer"));assert(sets==0);}
  SU("x","");CGI_startup_apply(&get);assert(strstr(output,"POST required"));assert(sets==0);
  SU("x","");save_fail=1;CGI_startup_apply(&post);assert(strstr(output,"saving"));
+ /* SCRIPT: the whole script, one command per line; missing lines are cleared */
+ setup("ap");for(i=0;i<32;i++)names[i]=NULL;strcpy(cfg[110],"old line 11");names[0]="SCRIPT";values[0]="net route add a b c\r\n\ncfg set SYS_NAME x\n";CGI_startup_apply(&post);assert(!strcmp(output,"OK"));
+ assert(!strcmp(cfg[100],"net route add a b c"));assert(!strcmp(cfg[101],""));assert(!strcmp(cfg[102],"cfg set SYS_NAME x"));assert(!strcmp(cfg[110],""));
+ {static char many[400];many[0]=0;for(i=0;i<17;i++)strcat(many,"x\n");setup("ap");for(i=0;i<32;i++)names[i]=NULL;names[0]="SCRIPT";values[0]=many;CGI_startup_apply(&post);assert(strstr(output,"more than 16"));assert(sets==0);}
+ setup("ap");for(i=0;i<32;i++)names[i]=NULL;names[0]="SCRIPT";values[0]="ok\nbad\tline";CGI_startup_apply(&post);assert(strstr(output,"line 2"));assert(sets==0);
  setup("ap");strcpy(cfg[100],"net route add a b c");strcpy(cfg[101],"");CGI_wifi_state(&post);assert(strstr(output,"\"startup\":[{\"command\":\"net route add a b c\",\"result\":\"ok\"},{\"command\":\"\",\"result\":\"\"}"));
  puts("PASS: startup script validation, keep/clear semantics, no restart and state");
  /* Ethernet router (gateway) mode: factory default, Ethernet WAN by DHCP, own LAN */

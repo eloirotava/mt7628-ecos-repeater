@@ -14,9 +14,9 @@ typedef struct _stCLI_cmd {
 } stCLI_cmd;
 #define CLI_CMD_FLAG_SUBCMD 2
 #define CLI_CMD_FLAG_INITED 0x10
-enum { CFG_SYS_BOOT1 = 1, CFG_SYS_BOOT2, CFG_SYS_BOOT3, CFG_SYS_BOOT4, CFG_SYS_BOOT5, CFG_SYS_BOOT6, CFG_SYS_BOOT7, CFG_SYS_BOOT8 };
+enum { CFG_SYS_BOOT1 = 1, CFG_SYS_BOOT2, CFG_SYS_BOOT3, CFG_SYS_BOOT4, CFG_SYS_BOOT5, CFG_SYS_BOOT6, CFG_SYS_BOOT7, CFG_SYS_BOOT8, CFG_SYS_BOOT9, CFG_SYS_BOOT10, CFG_SYS_BOOT11, CFG_SYS_BOOT12, CFG_SYS_BOOT13, CFG_SYS_BOOT14, CFG_SYS_BOOT15, CFG_SYS_BOOT16 };
 
-static char cfg[9][256];
+static char cfg[17][256];
 static int CFG_get_str(int id, char *val) { strcpy(val, cfg[id]); return 0; }
 
 static int route_argc, inits;
