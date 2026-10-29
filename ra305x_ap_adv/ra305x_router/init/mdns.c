@@ -16,6 +16,7 @@
 #include <ifaddrs.h>
 #include <cfg_def.h>
 #include <cfg_id.h>
+#include <sys_status.h>
 #endif
 #include "mdns.h"
 
@@ -79,7 +80,7 @@ extern int CFG_get_str(int id, char *val);
 static unsigned long local_addr_for(unsigned long src)
 {
 	struct ifaddrs *list, *i;
-	unsigned long best = 0;
+	unsigned long best = 0, first = 0;
 	if (getifaddrs(&list) < 0) return 0;
 	for (i = list; i; i = i->ifa_next) {
 		unsigned long a, m;
@@ -88,8 +89,12 @@ static unsigned long local_addr_for(unsigned long src)
 		m = ((struct sockaddr_in *)i->ifa_netmask)->sin_addr.s_addr;
 		if (!a || (a & 0xff) == 127) continue;
 		if ((a & m) == (src & m)) { best = a; break; }
+		if (!first) first = a;
 	}
 	freeifaddrs(list);
+	/* asked from another network (e.g. over WireGuard, not listed here):
+	 * the main LAN address, else any address of ours */
+	if (!best) best = SYS_lan_ip ? SYS_lan_ip : first;
 	return best;
 }
 
