@@ -253,6 +253,11 @@
 #define CFG_SYS_NET7_REACH	CFG_SYS_(101,CFG_TYPE_STR)
 #define CFG_SYS_NET7_INTERNET	CFG_SYS_(102,CFG_TYPE_STR)
 #define CFG_SYS_NET7_VIA	CFG_SYS_(103,CFG_TYPE_STR)
+/* network 1 as a NAT network of its own while others are bridged (opmode 3) */
+#define CFG_SYS_NET1_IP	CFG_SYS_(104,CFG_TYPE_STR)
+#define CFG_SYS_NET1_REACH	CFG_SYS_(105,CFG_TYPE_STR)
+#define CFG_SYS_NET1_INTERNET	CFG_SYS_(106,CFG_TYPE_STR)
+#define CFG_SYS_NET1_VIA	CFG_SYS_(107,CFG_TYPE_STR)
 /* WireGuard client (wg/wg_ecos.c) */
 #define CFG_SYS_WG_EN	CFG_SYS_(50,CFG_TYPE_STR)
 #define CFG_SYS_WG_KEY	CFG_SYS_(51,CFG_TYPE_STR)

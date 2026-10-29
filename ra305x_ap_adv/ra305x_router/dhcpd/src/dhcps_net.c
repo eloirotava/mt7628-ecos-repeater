@@ -1,5 +1,5 @@
 /* Small DHCP server for the extra (routed) Wi-Fi networks, one pool per
- * interface (ra1..ra6); the main dhcpd keeps serving the LAN. Reuses the
+ * interface (ra0..ra6); the main dhcpd keeps serving the LAN. Reuses the
  * dhcpd packet layer: per-interface packet sockets (UDP to port 67),
  * checksum checks, option helpers and raw Ethernet replies.
  * Pool: .100-.199 of the interface network, 12 h leases, 32 per network. */
@@ -21,7 +21,7 @@
 extern int LIB_etherpacket_send(struct ifnet *ifp, struct mbuf *m, unsigned char *dst_hwaddr, char *data, int len);
 extern struct ifnet *ifunit(const char *name);
 
-#define NETS        6
+#define NETS        7
 #define LEASES      32
 #define LEASE_SECS  43200
 #define POOL_FIRST  100

@@ -24,18 +24,18 @@ extern cyg_bool_t netif_alias_cfg(const char *intf, struct ip_set *setp);
 extern int DHCPS_net_start(const char *ifname, unsigned long ip, unsigned long mask, unsigned long dns);
 extern void FW_setrule(char *cmdbuf);
 
-static const int ip_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_IP, CFG_SYS_NET3_IP, CFG_SYS_NET4_IP, CFG_SYS_NET5_IP, CFG_SYS_NET6_IP, CFG_SYS_NET7_IP };
-static const int reach_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_REACH, CFG_SYS_NET3_REACH, CFG_SYS_NET4_REACH, CFG_SYS_NET5_REACH, CFG_SYS_NET6_REACH, CFG_SYS_NET7_REACH };
-static const int internet_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_INTERNET, CFG_SYS_NET3_INTERNET, CFG_SYS_NET4_INTERNET, CFG_SYS_NET5_INTERNET, CFG_SYS_NET6_INTERNET, CFG_SYS_NET7_INTERNET };
-static const int via_ids[NET_EXTRA_MAX] = { CFG_SYS_NET2_VIA, CFG_SYS_NET3_VIA, CFG_SYS_NET4_VIA, CFG_SYS_NET5_VIA, CFG_SYS_NET6_VIA, CFG_SYS_NET7_VIA };
+static const int ip_ids[NET_EXTRA_MAX] = { CFG_SYS_NET1_IP, CFG_SYS_NET2_IP, CFG_SYS_NET3_IP, CFG_SYS_NET4_IP, CFG_SYS_NET5_IP, CFG_SYS_NET6_IP, CFG_SYS_NET7_IP };
+static const int reach_ids[NET_EXTRA_MAX] = { CFG_SYS_NET1_REACH, CFG_SYS_NET2_REACH, CFG_SYS_NET3_REACH, CFG_SYS_NET4_REACH, CFG_SYS_NET5_REACH, CFG_SYS_NET6_REACH, CFG_SYS_NET7_REACH };
+static const int internet_ids[NET_EXTRA_MAX] = { CFG_SYS_NET1_INTERNET, CFG_SYS_NET2_INTERNET, CFG_SYS_NET3_INTERNET, CFG_SYS_NET4_INTERNET, CFG_SYS_NET5_INTERNET, CFG_SYS_NET6_INTERNET, CFG_SYS_NET7_INTERNET };
+static const int via_ids[NET_EXTRA_MAX] = { CFG_SYS_NET1_VIA, CFG_SYS_NET2_VIA, CFG_SYS_NET3_VIA, CFG_SYS_NET4_VIA, CFG_SYS_NET5_VIA, CFG_SYS_NET6_VIA, CFG_SYS_NET7_VIA };
 
-/* Network n (2..4) sends its Internet traffic through wg0. */
+/* Network n (1..7) sends its Internet traffic through wg0. */
 int net_extra_via_wg(int n)
 {
 	char val[16];
-	if (n < 2 || n > 1 + NET_EXTRA_MAX) return 0;
+	if (n < 1 || n > NET_EXTRA_MAX) return 0;
 	val[0] = 0;
-	CFG_get_str(via_ids[n - 2], val);
+	CFG_get_str(via_ids[n - 1], val);
 	return !strcmp(val, "wg");
 }
 
@@ -57,14 +57,26 @@ int net_extra_parse(const char *s, unsigned long *ip, unsigned long *mask)
 	return 0;
 }
 
-/* Network n (2..4) routed? Fills ip/mask when given. */
+/* Bridge-based setup (opmode 3): the device is a node of the upstream
+ * network; routed networks are translated to its address there. */
+int net_extra_bridge_base(void)
+{
+	char val[8];
+	val[0] = 0;
+	CFG_get_str(CFG_SYS_OPMODE, val);
+	return atoi(val) == 3;
+}
+
+/* Network n (1..7) routed? Fills ip/mask when given. Network 1 is routed
+ * here only in bridge-based setups; otherwise it is the LAN. */
 int net_extra_routed(int n, unsigned long *ip, unsigned long *mask)
 {
 	char val[64];
 	unsigned long i, m;
-	if (n < 2 || n > 1 + NET_EXTRA_MAX) return 0;
+	if (n < 1 || n > NET_EXTRA_MAX) return 0;
+	if (n == 1 && !net_extra_bridge_base()) return 0;
 	val[0] = 0;
-	CFG_get_str(ip_ids[n - 2], val);
+	CFG_get_str(ip_ids[n - 1], val);
 	if (!val[0] || net_extra_parse(val, &i, &m)) return 0;
 	if (ip) *ip = i;
 	if (mask) *mask = m;
@@ -79,7 +91,7 @@ int net_extra_ifnames(char names[][8], int max)
 	val[0] = 0;
 	CFG_get_str(CFG_WLN_BssidNum, val);
 	bss = atoi(val);
-	for (n = 2; n <= bss && n <= 1 + NET_EXTRA_MAX && count < max; n++)
+	for (n = 1; n <= bss && n <= NET_EXTRA_MAX && count < max; n++)
 		if (net_extra_routed(n, 0, 0)) {
 			strcpy(names[count], "ra0");
 			names[count][2] = (char)('0' + n - 1);
@@ -126,6 +138,31 @@ static void policy_setup(char names[][8], int count)
 }
 #endif
 
+#ifndef NET_EXTRA_HOST_TEST
+extern void NAT_setrule(char *cmd);
+/* Bridge-based setup: routed networks are translated to the device's
+ * address on the bridge (upstream network), or to wg0 when sent through
+ * the tunnel. NAT_init returns early without a WAN, so nothing flushes
+ * these rules later. */
+static void nat_to_bridge(char names[][8], int count)
+{
+	char cmd[160];
+	int i;
+	for (i = 0; i < count; i++) {
+		const char *out = net_extra_via_wg(names[i][2] - '0' + 1) && ifunit("wg0") ? "wg0" : SYS_lan_if;
+		snprintf(cmd, sizeof cmd, "map %s fromif %s 0/0 -> 0/32 portmap tcp/udp auto\n", out, names[i]);
+		NAT_setrule(cmd);
+		snprintf(cmd, sizeof cmd, "map %s fromif %s 0/0 -> 0/32 icmpidmap icmp 45000:65535\n", out, names[i]);
+		NAT_setrule(cmd);
+		if (strcmp(out, SYS_lan_if)) {
+			/* local traffic to the upstream network still leaves by the bridge */
+			snprintf(cmd, sizeof cmd, "map %s fromif %s 0/0 -> 0/32 portmap tcp/udp auto\n", SYS_lan_if, names[i]);
+			NAT_setrule(cmd);
+		}
+	}
+}
+#endif
+
 void net_extra_apply(void)
 {
 	char names[NET_EXTRA_MAX][8];
@@ -146,6 +183,7 @@ void net_extra_apply(void)
 	 * firewall already has them); later firewall reloads add them again. */
 #ifndef NET_EXTRA_HOST_TEST
 	policy_setup(names, count);
+	if (count && net_extra_bridge_base()) nat_to_bridge(names, count);
 #endif
 	net_extra_fw_ready();
 	if (count) net_extra_fw_rules(FW_setrule);
@@ -210,9 +248,9 @@ void net_extra_fw_rules(void (*set)(char *))
 		num[i] = names[i][2] - '0' + 1;
 		net_extra_routed(num[i], &ip[i], &mask[i]);
 		reach[i][0] = 0;
-		CFG_get_str(reach_ids[num[i] - 2], reach[i]);
+		CFG_get_str(reach_ids[num[i] - 1], reach[i]);
 		val[0] = 0;
-		CFG_get_str(internet_ids[num[i] - 2], val);
+		CFG_get_str(internet_ids[num[i] - 1], val);
 		internet[i] = strcmp(val, "0") != 0;
 		via_wg[i] = net_extra_via_wg(num[i]);
 	}
