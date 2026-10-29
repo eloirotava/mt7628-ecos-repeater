@@ -8,7 +8,7 @@ include $(TOPDIR)/rules.mak
 EXTRA_CFLAGS += -std=gnu99 -fgnu89-inline -DNTUN_ECOS
 EXTRA_CFLAGS += -I$(shell pwd)/compat
 
-ALL_OBJS = blake2s.o c25519.o aead.o sha2.o util.o sys_ecos.o
+ALL_OBJS = blake2s.o c25519.o aead.o sha2.o util.o sys_ecos.o tls13.o ws.o
 
 MODULE = $(shell pwd | sed "s/.*\///" ).o
 

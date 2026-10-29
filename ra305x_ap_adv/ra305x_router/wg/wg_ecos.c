@@ -18,7 +18,10 @@
 #include "wg_proto.h"
 #include "wg_ecos.h"
 #include "c25519.h"
-#include "util.h" /* dns_resolve */
+#include "util.h" /* dns_resolve, tcp_open, unhex32 */
+#include "sys.h"
+#include "tls13.h"
+#include "ws.h"
 #include "crypto_ecos.h"
 
 extern int CFG_get_str(int id, char *val);
@@ -51,7 +54,8 @@ static int if_ready; /* wg0 attached and addressed */
 
 static cyg_handle_t rx_handle, tx_handle;
 static cyg_thread rx_obj, tx_obj;
-static char rx_stack[12288], tx_stack[8192];
+/* rx also runs the TLS handshake (X25519, Ed25519, SHA-512) for wss */
+static char rx_stack[16384], tx_stack[8192];
 static unsigned char rx_buf[1600], rx_plain[1600], tx_plain[1500], tx_buf[1600];
 
 static long uptime(void) { return (long)(cyg_current_time() / 100); }
@@ -154,10 +158,128 @@ static void timestamp(uint8_t out[12])
 
 /* ------------------------------------------------------------ tunnel */
 
+/* wss transport: each WireGuard datagram is one binary WebSocket frame,
+ * TLS 1.3 to the server pinned by its Ed25519 key (wstunnel v10 dialect).
+ * Writers hold `lock`; the rx thread reads without it. A KeyUpdate answered
+ * inside tls_read could race a write, but the server (rustls) never asks. */
+static int wss, wss_fd = -1;
+static char wss_host[80], wss_name[80], wss_path[96];
+static uint8_t wss_key[32];
+static unsigned wss_port;
+static tls_conn wss_conn;
+static uint8_t wss_rx[4096], wss_out[sizeof tx_buf + 14];
+static size_t wss_rx_len;
+
 static void send_raw(const unsigned char *b, size_t n)
 {
-	sendto(sock, b, n, 0, (struct sockaddr *)&peer_addr, sizeof peer_addr);
+	if (wss) {
+		if (wss_fd >= 0 && tls_write(&wss_conn, wss_out, ws_frame(wss_out, 2, b, n))) {
+			/* broken: the rx thread notices on its next read and reconnects */
+			shutdown(wss_fd, SHUT_RDWR);
+		}
+	} else {
+		sendto(sock, b, n, 0, (struct sockaddr *)&peer_addr, sizeof peer_addr);
+	}
 	last_tx = uptime();
+}
+
+/* TCP + TLS + WebSocket upgrade; 0 or -1 (status says why) */
+static int wss_connect(void)
+{
+	static char req[640];
+	char claims[96], m[128];
+	uint8_t ip[4];
+	struct sockaddr_in a;
+	const char *err;
+	long n, r;
+	size_t i, end = 0;
+	int fd, one = 1;
+
+	if (dns_resolve(wss_host, ip)) { set_status(WG_HANDSHAKE, "WSS: endpoint name not resolved"); return -1; }
+	addr4(&a, ip, 443);
+	a.sin_len = sizeof a;
+	fd = tcp_open(&a, 15);
+	if (fd < 0) { set_status(WG_HANDSHAKE, "WSS: TCP connection to port 443 failed"); return -1; }
+	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+	err = tls_handshake(&wss_conn, fd, wss_name, 0, 0, wss_key, x_now() + 30);
+	if (err) {
+		snprintf(m, sizeof m, "WSS: TLS failed (%s)", err);
+		set_status(WG_HANDSHAKE, m);
+		close(fd);
+		return -1;
+	}
+	snprintf(claims, sizeof claims, "\",\"p\":{\"Udp\":{\"timeout\":null}},\"r\":\"127.0.0.1\",\"rp\":%u}", wss_port);
+	n = ws_request(req, sizeof req, wss_path, wss_name, claims);
+	wss_rx_len = 0;
+	if (n < 0 || tls_write(&wss_conn, (const uint8_t *)req, (size_t)n)) goto fail;
+	while (!end) {
+		r = tls_read(&wss_conn, wss_rx + wss_rx_len, sizeof wss_rx - wss_rx_len);
+		if (r < 0) goto fail;
+		wss_rx_len += (size_t)r;
+		for (i = 0; i + 4 <= wss_rx_len && !end; i++)
+			if (!memcmp(wss_rx + i, "\r\n\r\n", 4)) end = i + 4;
+		if (!end && wss_rx_len == sizeof wss_rx) goto fail;
+	}
+	if (memcmp(wss_rx, "HTTP/1.1 101", 12)) {
+		set_status(WG_HANDSHAKE, "WSS: WebSocket upgrade refused (check the path)");
+		close(fd);
+		return -1;
+	}
+	wss_rx_len -= end;
+	memmove(wss_rx, wss_rx + end, wss_rx_len);
+	memcpy(&peer_addr, &a, sizeof a);
+	cyg_mutex_lock(&lock);
+	wss_fd = fd;
+	cyg_mutex_unlock(&lock);
+	return 0;
+fail:
+	set_status(WG_HANDSHAKE, "WSS: WebSocket upgrade failed");
+	close(fd);
+	return -1;
+}
+
+static void wss_drop(void)
+{
+	cyg_mutex_lock(&lock);
+	if (wss_fd >= 0) close(wss_fd);
+	wss_fd = -1;
+	cyg_mutex_unlock(&lock);
+}
+
+/* next datagram into d: length, 0 after ~1 s without one, -1 if the
+ * connection is gone */
+static long wss_recv(uint8_t *d, size_t cap)
+{
+	for (;;) {
+		int op;
+		size_t off, pl;
+		long t = ws_parse(wss_rx, wss_rx_len, sizeof wss_rx, &op, &off, &pl), r;
+		if (t < 0) return -1;
+		if (t > 0) {
+			r = -2;
+			if (op == 2 && pl <= cap) { memcpy(d, wss_rx + off, pl); r = (long)pl; }
+			if (op == 9) {
+				cyg_mutex_lock(&lock);
+				tls_write(&wss_conn, wss_out, ws_frame(wss_out, 0xA, wss_rx + off, pl));
+				cyg_mutex_unlock(&lock);
+			}
+			if (op == 8) return -1;
+			wss_rx_len -= (size_t)t;
+			memmove(wss_rx, wss_rx + t, wss_rx_len);
+			if (r >= 0) return r;
+			continue;
+		}
+		if (!tls_pending(&wss_conn)) {
+			struct pollfd p;
+			p.fd = wss_fd; p.events = POLLIN; p.revents = 0;
+			r = x_poll(&p, 1, 1000);
+			if (r == 0) return 0;
+			if (r < 0) return -1;
+		}
+		r = tls_read(&wss_conn, wss_rx + wss_rx_len, sizeof wss_rx - wss_rx_len);
+		if (r < 0) return -1;
+		wss_rx_len += (size_t)r;
+	}
 }
 
 /* caller holds lock */
@@ -206,9 +328,22 @@ static void rx_thread(cyg_addrword_t arg)
 	char m[128];
 	(void)arg;
 
-	setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+	if (!wss) setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
 	for (;;) {
-		n = recv(sock, rx_buf, sizeof rx_buf, 0);
+		if (wss) {
+			if (wss_fd < 0) {
+				if (wss_connect()) { cyg_thread_delay(500); continue; }
+				init_time = -1; /* new path: handshake again right away */
+			}
+			n = wss_recv(rx_buf, sizeof rx_buf);
+			if (n < 0) {
+				wss_drop();
+				set_status(WG_HANDSHAKE, "WSS: connection lost; reconnecting");
+				continue;
+			}
+		} else {
+			n = recv(sock, rx_buf, sizeof rx_buf, 0);
+		}
 		now = uptime();
 		cyg_mutex_lock(&lock);
 		if (n > 0) {
@@ -217,7 +352,7 @@ static void rx_thread(cyg_addrword_t arg)
 				if (!wg_consume_response(&wg, rx_buf, (size_t)n)) {
 					sess_time = now;
 					init_time = -1;
-					snprintf(m, sizeof m, "Connected to %s:%u", inet_ntoa(peer_addr.sin_addr), ntohs(peer_addr.sin_port));
+					snprintf(m, sizeof m, wss ? "Connected to %s:%u (WSS)" : "Connected to %s:%u", inet_ntoa(peer_addr.sin_addr), ntohs(peer_addr.sin_port));
 					set_status(WG_CONNECTED, m);
 					/* confirm the session to the responder right away */
 					send_raw(tx_buf, wg_encrypt(&wg, tx_plain, 0, tx_buf));
@@ -328,6 +463,21 @@ static void boot_thread(cyg_addrword_t arg)
 	CFG_get_str(CFG_SYS_WG_PORT, val);
 	port = atoi(val);
 	if (!host[0] || port < 1 || port > 65535) { set_status(WG_ERROR, "Not started: invalid endpoint"); return; }
+	val[0] = 0;
+	CFG_get_str(CFG_SYS_WG_TRANSPORT, val);
+	wss = !strcmp(val, "wss");
+	if (wss) {
+		wss_port = (unsigned)port;
+		strncpy(wss_host, host, sizeof wss_host - 1);
+		wss_path[0] = wss_name[0] = 0;
+		CFG_get_str(CFG_SYS_WG_WSS_PATH, val);
+		strncpy(wss_path, val, sizeof wss_path - 1);
+		CFG_get_str(CFG_SYS_WG_WSS_NAME, val);
+		strncpy(wss_name, val[0] ? val : host, sizeof wss_name - 1);
+		val[0] = 0;
+		CFG_get_str(CFG_SYS_WG_WSS_KEY, val);
+		if (wss_path[0] != '/' || unhex32(wss_key, val)) { set_status(WG_ERROR, "Not started: WSS needs a path and the server's Ed25519 key"); return; }
+	}
 	CFG_get_str(CFG_SYS_WG_KEEPALIVE, val);
 	keepalive = (unsigned)atoi(val);
 	if (keepalive > 3600) keepalive = 25;
@@ -357,8 +507,10 @@ static void boot_thread(cyg_addrword_t arg)
 	peer_addr.sin_port = htons((unsigned short)port);
 	memcpy(&peer_addr.sin_addr, ip, 4);
 
-	sock = socket(AF_INET, SOCK_DGRAM, 0);
-	if (sock < 0) { set_status(WG_ERROR, "Could not open the UDP socket"); return; }
+	if (!wss) {
+		sock = socket(AF_INET, SOCK_DGRAM, 0);
+		if (sock < 0) { set_status(WG_ERROR, "Could not open the UDP socket"); return; }
+	}
 
 	cyg_thread_create(11, tx_thread, 0, "wg tx", tx_stack, sizeof tx_stack, &tx_handle, &tx_obj);
 	cyg_thread_resume(tx_handle);
