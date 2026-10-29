@@ -19,8 +19,13 @@ typedef struct {
 	uint8_t  skey[32], siv[12], ssec[32];
 	uint64_t cseq, sseq;
 	size_t   pos, len; /* texto claro em rec[pos..len] */
+	size_t   got;      /* bytes ja recebidos do registro em rec (leitura retomavel) */
 	uint8_t  rec[5 + TLS_MAX_RECORD];
 } tls_conn;
+
+/* tls_read: nada chegou ainda (prazo do socket, SO_RCVTIMEO); o que veio
+ * de um registro incompleto fica guardado e a proxima chamada continua */
+#define TLS_AGAIN (-2)
 
 /* handshake bloqueante sobre um socket ja conectado; deadline em x_now().
  * Devolve 0 ou uma mensagem de erro curta. */
@@ -29,7 +34,7 @@ const char *tls_handshake(tls_conn *c, int fd, const char *host,
                           const uint8_t cert_key[32], long deadline);
 int  tls_write(tls_conn *c, const uint8_t *d, size_t n); /* 0 ou -1 */
 /* le ate n bytes de dados; 0 = registro so de controle (nao e fim);
- * -1 = conexao acabou ou erro */
+ * TLS_AGAIN = prazo do socket sem registro completo; -1 = conexao acabou ou erro */
 long tls_read(tls_conn *c, uint8_t *out, size_t n);
 static inline int tls_pending(const tls_conn *c) { return c->pos < c->len; }
 
