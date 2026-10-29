@@ -176,6 +176,9 @@ legend{font-weight:600;padding:0 4px}
 <label for="wg-keepalive">Persistent keepalive (seconds)</label>
 <input id="wg-keepalive" inputmode="numeric" maxlength="4">
 <small>25 keeps the tunnel open through NAT; 0 disables.</small>
+<label for="wg-dns">DNS for networks sent through the tunnel</label>
+<input id="wg-dns" maxlength="15" autocomplete="off" spellcheck="false" placeholder="1.1.1.1">
+<small>Offered by DHCP to networks whose Internet goes through WireGuard (the upstream router's DNS is not reachable from there).</small>
 <label for="wg-psk">Preshared key (optional)</label>
 <input id="wg-psk" type="password" maxlength="44" autocomplete="off" spellcheck="false">
 <small id="wg-psk-hint">Leave empty for none.</small>
@@ -190,8 +193,11 @@ legend{font-weight:600;padding:0 4px}
 <form id="startup-form" novalidate>
 <section aria-labelledby="h-startup" id="startup">
 <h2 id="h-startup">Startup script</h2>
-<p class="hint">Console commands run once at every boot, in order, about 20 seconds after start, exactly as typed at the Telnet prompt (for example <code>net route add 10.9.0.0 255.255.0.0 192.168.1.2</code>). Saved without restarting; results of the last boot are shown next to each line.</p>
-<div id="startup-lines"></div>
+<p class="hint">One console command per line (up to 16), run once at every boot, in order, about 20 seconds after start, exactly as typed at the Telnet prompt (for example <code>net route add 10.9.0.0 255.255.0.0 192.168.1.2</code>). Saved without restarting.</p>
+<label for="startup-script">Script</label>
+<textarea id="startup-script" rows="8" spellcheck="false" autocomplete="off" wrap="off"></textarea>
+<p class="hint" id="startup-results-title" hidden>Results of the last boot:</p>
+<ol id="startup-results"></ol>
 <div class="row"><button type="submit">Save script</button></div>
 <p id="startup-msg" class="msg" role="status" aria-live="polite"></p>
 </section>
@@ -332,7 +338,7 @@ var REACH = [['device', 'This device']].concat([1, 2, 3, 4, 5, 6, 7].map(functio
     input('net' + n + '-address', 'Address/prefix', {maxLength: 18, spellcheck: false, autocomplete: 'off', placeholder: n === 1 ? '192.168.11.1/24' : '10.0.' + n + '.1/24'});
     if (n === 1) check('net1-dhcp', 'Hand out addresses (DHCP)');
     check('net' + n + '-internet', 'Internet access');
-    check('net' + n + '-via-wg', 'Internet through the WireGuard tunnel (DNS 1.1.1.1)');
+    check('net' + n + '-via-wg', 'Internet through the WireGuard tunnel (uses the WireGuard DNS)');
     var p = document.createElement('p'); p.className = 'hint'; p.textContent = 'May reach:'; add(p);
     var box = document.createElement('div'); box.className = 'checks'; box.id = 'net' + n + '-reach'; add(box);
     REACH.forEach(function (rr) {
@@ -377,6 +383,7 @@ function fillForms() {
   $('wg-endpoint').value = wg.endpoint || '';
   $('wg-port').value = String(wg.port || 51820);
   $('wg-keepalive').value = String(wg.keepalive != null && wg.port ? wg.keepalive : 25);
+  $('wg-dns').value = wg.dns || '1.1.1.1';
   update();
 }
 
@@ -549,33 +556,33 @@ adminForm.addEventListener('submit', async function (e) {
   } catch (err) { msg(out, err.message || 'Could not save the credentials.', 'bad'); }
 });
 
-(function () {
-  var box = $('startup-lines');
-  for (var i = 1; i <= 8; i++) {
-    var lab = document.createElement('label'); lab.htmlFor = 'startup-' + i; lab.textContent = 'Line ' + i;
-    var inp = document.createElement('input'); inp.id = 'startup-' + i; inp.maxLength = 200; inp.spellcheck = false; inp.autocomplete = 'off';
-    var res = document.createElement('small'); res.id = 'startup-result-' + i;
-    box.appendChild(lab); box.appendChild(inp); box.appendChild(res);
-  }
-}());
+var BOOT_LINES = 16;
 function fillStartup() {
-  (state.startup || []).forEach(function (l, i) {
-    var inp = $('startup-' + (i + 1)), res = $('startup-result-' + (i + 1));
-    if (!inp) return;
-    inp.value = l.command || '';
-    res.textContent = l.command ? 'Last boot: ' + (l.result || '–') : '';
-    res.className = /^(ok|pending)$/.test(l.result || '') || !l.command ? '' : 'bad';
+  var lines = (state.startup || []).map(function (l) { return l.command || ''; });
+  while (lines.length && !lines[lines.length - 1]) lines.pop();
+  $('startup-script').value = lines.join('\n');
+  var list = $('startup-results'), any = false;
+  list.textContent = '';
+  (state.startup || []).forEach(function (l) {
+    if (!l.command) return;
+    var li = document.createElement('li');
+    li.textContent = l.command + ' — ' + (l.result || '–');
+    li.className = /^(ok|pending)$/.test(l.result || '') ? '' : 'bad';
+    list.appendChild(li); any = true;
   });
+  $('startup-results-title').hidden = !any;
 }
 $('startup-form').addEventListener('submit', async function (e) {
   e.preventDefault();
   var out = $('startup-msg'), body = new URLSearchParams();
-  for (var i = 1; i <= 8; i++) {
-    var v = $('startup-' + i).value.trim();
-    if (!/^[\x20-\x7e]{0,200}$/.test(v)) return msg(out, 'Line ' + i + ': printable ASCII, up to 200 characters.', 'bad');
-    if (/^reboot\b/.test(v)) return msg(out, 'Line ' + i + ': reboot is not allowed in the startup script.', 'bad');
-    body.set('COMMAND' + i, v);
+  var lines = $('startup-script').value.replace(/\r/g, '').split('\n').map(function (v) { return v.trim(); });
+  while (lines.length && !lines[lines.length - 1]) lines.pop();
+  if (lines.length > BOOT_LINES) return msg(out, 'Up to ' + BOOT_LINES + ' lines.', 'bad');
+  for (var i = 0; i < lines.length; i++) {
+    if (!/^[\x20-\x7e]{0,200}$/.test(lines[i])) return msg(out, 'Line ' + (i + 1) + ': printable ASCII, up to 200 characters.', 'bad');
+    if (/^reboot\b/.test(lines[i])) return msg(out, 'Line ' + (i + 1) + ': reboot is not allowed in the startup script.', 'bad');
   }
+  body.set('SCRIPT', lines.join('\n'));
   try {
     var text = await post('/startup_apply.html', body);
     if (text !== 'OK') throw new Error(text.replace(/^ERROR:\s*/, ''));
@@ -602,6 +609,8 @@ $('wg-form').addEventListener('submit', async function (e) {
   if (!/^\d{1,5}$/.test(port) || +port < 1 || +port > 65535) return msg(out, 'Server port: 1–65535.', 'bad');
   if (!/^\d{1,4}$/.test(ka) || +ka > 3600) return msg(out, 'Keepalive: 0–3600 seconds.', 'bad');
   if (psk && !key44.test(psk)) return msg(out, 'Preshared key: 44 base64 characters ending in “=”.', 'bad');
+  var dns = $('wg-dns').value.trim();
+  if (dns && !/^(\d{1,3}\.){3}\d{1,3}$/.test(dns)) return msg(out, 'DNS: an IPv4 address, for example 1.1.1.1.', 'bad');
   if (en && (!addr || !peer || !host)) return msg(out, 'Enter the tunnel address, server public key and endpoint to enable WireGuard.', 'bad');
   if (en && !state.admin_password_set) return msg(out, 'Set an admin password first (Administration).', 'bad');
   if (!window.confirm('Save WireGuard settings and restart the device?')) return;
@@ -609,6 +618,7 @@ $('wg-form').addEventListener('submit', async function (e) {
   body.set('ENABLED', en ? '1' : '0'); body.set('ADDRESS', addr); body.set('PEER_PUBLIC_KEY', peer);
   body.set('ENDPOINT', host); body.set('PORT', port); body.set('KEEPALIVE', ka);
   body.set('PRESHARED_KEY', psk || (wg.preshared_key_set ? 'keep' : ''));
+  body.set('DNS', dns || '1.1.1.1');
   try {
     var text = await post('/wg_apply.html', body, 5000);
     if (text !== 'OK') throw new Error(text.replace(/^ERROR:\s*/, ''));

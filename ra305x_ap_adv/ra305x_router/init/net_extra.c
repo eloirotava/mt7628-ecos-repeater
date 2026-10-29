@@ -163,6 +163,17 @@ static void nat_to_bridge(char names[][8], int count)
 }
 #endif
 
+/* DNS for networks sent through the tunnel */
+static unsigned long wg_dns(void)
+{
+	char val[20];
+	unsigned long a;
+	val[0] = 0;
+	CFG_get_str(CFG_SYS_WG_DNS, val);
+	a = inet_addr(val);
+	return val[0] && a != 0xffffffffUL && a ? a : inet_addr("1.1.1.1");
+}
+
 void net_extra_apply(void)
 {
 	char names[NET_EXTRA_MAX][8];
@@ -176,8 +187,9 @@ void net_extra_apply(void)
 		set.netmask = mask;
 		if (!netif_alias_cfg(names[i], &set)) diag_printf("net: %s address failed\n", names[i]);
 		/* dns 0: offer the upstream DNS current at each reply (reachable through
-		 * NAT); through the tunnel the home router's DNS is not reachable */
-		DHCPS_net_start(names[i], ip, mask, net_extra_via_wg(names[i][2] - '0' + 1) ? inet_addr("1.1.1.1") : 0);
+		 * NAT); through the tunnel the home router's DNS is not reachable, so
+		 * those networks get SYS_WG_DNS (default 1.1.1.1) */
+		DHCPS_net_start(names[i], ip, mask, net_extra_via_wg(names[i][2] - '0' + 1) ? wg_dns() : 0);
 	}
 	/* Wi-Fi is up: isolation rules may be loaded now (no-op if the
 	 * firewall already has them); later firewall reloads add them again. */

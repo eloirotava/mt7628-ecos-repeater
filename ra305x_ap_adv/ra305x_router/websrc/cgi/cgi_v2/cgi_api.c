@@ -240,7 +240,10 @@ extern long wg_ecos_handshake_age(void);
 extern void wg_ecos_counters(unsigned long *rx, unsigned long *tx);
 extern int wg_b64_decode32(unsigned char out[32], const char *s);
 extern const char *CLI_boot_result(int n);
-extern const int CLI_boot_ids[8];
+#ifndef CLI_BOOT_LINES
+#define CLI_BOOT_LINES 16 /* cli/cmd_boot.h */
+#endif
+extern const int CLI_boot_ids[CLI_BOOT_LINES];
 extern const char *ramboot_web_state(void);
 extern const char *ramboot_web_error(void);
 extern int ramboot_web_busy(void);
@@ -335,7 +338,8 @@ void CGI_wifi_state(http_req *req)
         CFG_get_str(CFG_SYS_WG_PORT, val);
         WEB_printf(req, ",\"port\":%d", atoi(val));
         CFG_get_str(CFG_SYS_WG_KEEPALIVE, val);
-        WEB_printf(req, ",\"keepalive\":%d", atoi(val));
+        WEB_printf(req, ",\"keepalive\":%d,\"dns\":", atoi(val));
+        val[0] = '\0'; CFG_get_str(CFG_SYS_WG_DNS, val); wifi_ui_json(req, val[0] ? val : "1.1.1.1");
         CFG_get_str(CFG_SYS_WG_PSK, val);
         WEB_printf(req, ",\"preshared_key_set\":%d,\"public_key\":", val[0] != '\0');
         wg_ecos_public_key(pub); wifi_ui_json(req, pub);
@@ -347,7 +351,7 @@ void CGI_wifi_state(http_req *req)
     {
         int n;
         WEB_printf(req, ",\"startup\":[");
-        for (n = 0; n < 8; n++) {
+        for (n = 0; n < CLI_BOOT_LINES; n++) {
             val[0] = '\0';
             CFG_get_str(CLI_boot_ids[n], val);
             WEB_printf(req, "%s{\"command\":", n ? "," : "");
@@ -7189,13 +7193,18 @@ static int wg_ui_cidr(const char *s)
 
 void CGI_wg_apply(http_req *req)
 {
-    char cur[256], *en, *addr, *peer, *host, *port, *ka, *psk, *end;
+    char cur[256], *en, *addr, *peer, *host, *port, *ka, *psk, *dns, *end;
     unsigned char tmp[32];
     long p, k;
     if (req->method != METHOD_POST) { WEB_printf(req,"ERROR: POST required"); return; }
     en = WEB_query(req,"ENABLED"); addr = WEB_query(req,"ADDRESS"); peer = WEB_query(req,"PEER_PUBLIC_KEY");
     host = WEB_query(req,"ENDPOINT"); port = WEB_query(req,"PORT"); ka = WEB_query(req,"KEEPALIVE");
     psk = WEB_query(req,"PRESHARED_KEY");
+    dns = WEB_query(req,"DNS");
+    if (dns && *dns) {
+        struct in_addr a;
+        if (!inet_aton(dns, &a) || !a.s_addr || a.s_addr == 0xffffffffUL) { WEB_printf(req,"ERROR: DNS must be an IPv4 address, for example 1.1.1.1"); return; }
+    }
     if (!en || (strcmp(en,"0") && strcmp(en,"1"))) { WEB_printf(req,"ERROR: ENABLED must be 0 or 1"); return; }
     if (!addr) addr = "";
     if (!peer) peer = "";
@@ -7218,7 +7227,8 @@ void CGI_wg_apply(http_req *req)
     if (CFG_set_str(CFG_SYS_WG_EN,en) < 0 || CFG_set_str(CFG_SYS_WG_ADDR,addr) < 0 ||
         CFG_set_str(CFG_SYS_WG_PEER,peer) < 0 || CFG_set_str(CFG_SYS_WG_HOST,host) < 0 ||
         CFG_set_str(CFG_SYS_WG_PORT,port) < 0 || CFG_set_str(CFG_SYS_WG_KEEPALIVE,cur) < 0 ||
-        (psk && strcmp(psk,"keep") && CFG_set_str(CFG_SYS_WG_PSK,psk) < 0)) { WEB_printf(req,"ERROR: settings could not be applied"); return; }
+        (psk && strcmp(psk,"keep") && CFG_set_str(CFG_SYS_WG_PSK,psk) < 0) ||
+        (dns && CFG_set_str(CFG_SYS_WG_DNS, *dns ? dns : "1.1.1.1") < 0)) { WEB_printf(req,"ERROR: settings could not be applied"); return; }
     CFG_commit(CFG_NO_EVENT);
     if (CFG_save_user()) { WEB_printf(req,"ERROR: saving to flash failed"); return; }
     WEB_printf(req,"OK");
@@ -7229,18 +7239,44 @@ void CGI_wg_apply(http_req *req)
  * Saved without restarting; absent fields keep their stored line. */
 void CGI_startup_apply(http_req *req)
 {
-    char key[12], *v[8];
+    static char lines[CLI_BOOT_LINES][204];
+    char key[12], *v[CLI_BOOT_LINES], *script;
     int n, i;
     if (req->method != METHOD_POST) { WEB_printf(req,"ERROR: POST required"); return; }
-    for (n = 0; n < 8; n++) {
-        sprintf(key, "COMMAND%d", n + 1);
-        v[n] = WEB_query(req, key);
+    script = WEB_query(req, "SCRIPT");
+    if (script) {
+        /* the whole script, one command per line (\n or \r\n); missing lines are cleared */
+        const char *p = script;
+        for (n = 0; n < CLI_BOOT_LINES; n++) { lines[n][0] = 0; v[n] = lines[n]; }
+        for (n = 0; *p; n++) {
+            const char *e = p;
+            size_t len;
+            while (*e && *e != '\n') e++;
+            len = e - p;
+            if (len && p[len - 1] == '\r') len--;
+            if (n >= CLI_BOOT_LINES) {
+                /* trailing empty lines are fine, more commands are not */
+                if (len) { WEB_printf(req,"ERROR: the script has more than %d lines", CLI_BOOT_LINES); return; }
+            } else {
+                if (len > 200) { WEB_printf(req,"ERROR: line %d is longer than 200 characters", n + 1); return; }
+                memcpy(lines[n], p, len);
+                lines[n][len] = 0;
+            }
+            p = *e ? e + 1 : e;
+        }
+    } else {
+        for (n = 0; n < CLI_BOOT_LINES; n++) {
+            sprintf(key, "COMMAND%d", n + 1);
+            v[n] = WEB_query(req, key);
+        }
+    }
+    for (n = 0; n < CLI_BOOT_LINES; n++) {
         if (!v[n]) continue;
         if (strlen(v[n]) > 200) { WEB_printf(req,"ERROR: COMMAND%d is longer than 200 characters", n + 1); return; }
         for (i = 0; v[n][i]; i++)
-            if ((unsigned char)v[n][i] < 32 || (unsigned char)v[n][i] > 126) { WEB_printf(req,"ERROR: COMMAND%d must be printable ASCII on one line", n + 1); return; }
+            if ((unsigned char)v[n][i] < 32 || (unsigned char)v[n][i] > 126) { WEB_printf(req,"ERROR: line %d must be printable ASCII", n + 1); return; }
     }
-    for (n = 0; n < 8; n++)
+    for (n = 0; n < CLI_BOOT_LINES; n++)
         if (v[n] && CFG_set_str(CLI_boot_ids[n], v[n]) < 0) { WEB_printf(req,"ERROR: settings could not be applied"); return; }
     CFG_commit(CFG_NO_EVENT);
     if (CFG_save_user()) { WEB_printf(req,"ERROR: saving to flash failed"); return; }

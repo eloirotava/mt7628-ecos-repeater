@@ -39,7 +39,6 @@ function fixture(state, opts = {}) {
   const reg = c => { if (c.id) els[c.id] = c; (c.children || []).forEach(reg); return c; };
   els['net-list'].appendChild = reg;
   els['scan-table'].tBodies = [element('tbody')];
-  els['startup-lines'].appendChild = c => { if (c.id) els[c.id] = c; return c; };
   const calls = [];
   let current = Object.assign({}, state);
   const context = {TextEncoder, TextDecoder, URLSearchParams, Uint8Array, AbortSignal, console, Promise, Object, Math, Date, JSON,
@@ -161,7 +160,7 @@ const submit = f => f.els['setup-form'].listeners.submit({preventDefault() {}});
   f.els['wg-address'].value = '10.8.0.30/24'; f.els['wg-peer'].value = 'short'; await wgSubmit({preventDefault() {}}); assert.strictEqual(f.posts().length, 0);
   f.els['wg-peer'].value = WGK; await wgSubmit({preventDefault() {}});
   p = f.posts()[0]; assert.strictEqual(p.url, '/wg_apply.html');
-  assert.strictEqual(p.options.body.get('ADDRESS'), '10.8.0.30/24'); assert.strictEqual(p.options.body.get('PEER_PUBLIC_KEY'), WGK); assert.strictEqual(p.options.body.get('PRESHARED_KEY'), ''); assert.strictEqual(p.options.body.get('KEEPALIVE'), '25');
+  assert.strictEqual(p.options.body.get('ADDRESS'), '10.8.0.30/24'); assert.strictEqual(p.options.body.get('PEER_PUBLIC_KEY'), WGK); assert.strictEqual(p.options.body.get('PRESHARED_KEY'), ''); assert.strictEqual(p.options.body.get('KEEPALIVE'), '25'); assert.strictEqual(p.options.body.get('DNS'), '1.1.1.1');
   f = fixture(withWg({preshared_key_set: 1, enabled: 1, address: '10.8.0.30/24', peer_public_key: WGK, endpoint: 'br.example'}));
   assert(f.els['wg-psk-hint'].textContent.includes('keep'));
   await f.els['wg-form'].listeners.submit({preventDefault() {}}); assert.strictEqual(f.posts()[0].options.body.get('PRESHARED_KEY'), 'keep');
@@ -199,14 +198,16 @@ const submit = f => f.els['setup-form'].listeners.submit({preventDefault() {}});
   assert.strictEqual(b.get('REACH3'), 'net1,net2'); assert.strictEqual(b.get('INTERNET3'), '0'); assert(!b.has('SSID4'));
   assert.strictEqual(b.get('VIA2'), 'wg'); assert.strictEqual(b.get('VIA3'), 'wan'); assert.strictEqual(b.get('ETHERNET'), 'net1');
 
-  /* Startup script */
-  f = fixture(Object.assign({}, base, {startup: [{command: 'net route add a b c', result: 'ok'}, {command: 'bogus', result: 'unknown command'}].concat(Array(6).fill({command: '', result: ''}))}));
-  assert.strictEqual(f.els['startup-1'].value, 'net route add a b c'); assert.strictEqual(f.els['startup-result-1'].textContent, 'Last boot: ok');
-  assert.strictEqual(f.els['startup-result-2'].className, 'bad'); assert.strictEqual(f.els['startup-result-3'].textContent, '');
+  /* Startup script: one field, one command per line, results of the last boot */
+  f = fixture(Object.assign({}, base, {startup: [{command: 'net route add a b c', result: 'ok'}, {command: 'bogus', result: 'unknown command'}].concat(Array(14).fill({command: '', result: ''}))}));
+  assert.strictEqual(f.els['startup-script'].value, 'net route add a b c\nbogus');
+  assert(!f.els['startup-results-title'].hidden); assert.strictEqual(f.els['startup-results'].children.length, 2);
+  assert.strictEqual(f.els['startup-results'].children[1].className, 'bad');
   const su = f.els['startup-form'].listeners.submit;
-  f.els['startup-4'].value = 'reboot'; await su({preventDefault() {}}); assert.strictEqual(f.posts().length, 0); assert(f.els['startup-msg'].textContent.includes('reboot'));
-  f.els['startup-4'].value = 'cfg set SYS_NAME x'; await su({preventDefault() {}});
-  p = f.posts()[0]; assert.strictEqual(p.url, '/startup_apply.html'); assert.strictEqual(p.options.body.get('COMMAND1'), 'net route add a b c'); assert.strictEqual(p.options.body.get('COMMAND4'), 'cfg set SYS_NAME x'); assert.strictEqual(p.options.body.get('COMMAND8'), '');
+  f.els['startup-script'].value = 'net route add a b c\nreboot'; await su({preventDefault() {}}); assert.strictEqual(f.posts().length, 0); assert(f.els['startup-msg'].textContent.includes('reboot'));
+  f.els['startup-script'].value = Array(17).fill('x').join('\n'); await su({preventDefault() {}}); assert.strictEqual(f.posts().length, 0); assert(f.els['startup-msg'].textContent.includes('16'));
+  f.els['startup-script'].value = 'net route add a b c\r\n\n  cfg set SYS_NAME x  \n\n'; await su({preventDefault() {}});
+  p = f.posts()[0]; assert.strictEqual(p.url, '/startup_apply.html'); assert.strictEqual(p.options.body.get('SCRIPT'), 'net route add a b c\n\ncfg set SYS_NAME x');
   assert(f.els['startup-msg'].textContent.includes('next boot'));
 
   /* Firmware update */

@@ -1,4 +1,4 @@
-/* Startup script: up to CLI_BOOT_LINES console commands (SYS_BOOT1..8) run
+/* Startup script: up to CLI_BOOT_LINES console commands (SYS_BOOT1..16) run
  * once at boot, after the LAN is configured, as if typed at CMD>, e.g.
  *   net route add 10.9.0.0 255.255.0.0 192.168.1.2
  *   cfg set SYS_NAME extender
@@ -84,6 +84,8 @@ static void describe(char *out, size_t size, int rc)
 const int CLI_boot_ids[CLI_BOOT_LINES] = {
 	CFG_SYS_BOOT1, CFG_SYS_BOOT2, CFG_SYS_BOOT3, CFG_SYS_BOOT4,
 	CFG_SYS_BOOT5, CFG_SYS_BOOT6, CFG_SYS_BOOT7, CFG_SYS_BOOT8,
+	CFG_SYS_BOOT9, CFG_SYS_BOOT10, CFG_SYS_BOOT11, CFG_SYS_BOOT12,
+	CFG_SYS_BOOT13, CFG_SYS_BOOT14, CFG_SYS_BOOT15, CFG_SYS_BOOT16,
 };
 
 /* Runs every non-empty line in order; one failure does not stop the rest. */
