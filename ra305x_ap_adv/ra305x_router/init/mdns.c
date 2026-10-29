@@ -110,6 +110,14 @@ static void join_all(int s)
 	freeifaddrs(list);
 }
 
+/* for the state: what the responder is doing */
+static const char *mdns_state = "not started";
+static unsigned mdns_queries, mdns_answers, mdns_noaddr;
+void mdns_status(const char **state, unsigned *queries, unsigned *answers, unsigned *noaddr)
+{
+	*state = mdns_state; *queries = mdns_queries; *answers = mdns_answers; *noaddr = mdns_noaddr;
+}
+
 static cyg_handle_t mdns_handle;
 static cyg_thread mdns_obj;
 static char mdns_stack[6144];
@@ -125,7 +133,7 @@ static void mdns_thread(cyg_addrword_t arg)
 	(void)arg;
 
 	s = socket(AF_INET, SOCK_DGRAM, 0);
-	if (s < 0) { diag_printf("mdns: no socket\n"); return; }
+	if (s < 0) { mdns_state = "no socket"; diag_printf("mdns: no socket\n"); return; }
 	setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
 	setsockopt(s, SOL_SOCKET, SO_REUSEPORT, &one, sizeof one);
 	setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
@@ -133,7 +141,8 @@ static void mdns_thread(cyg_addrword_t arg)
 	me.sin_len = sizeof me;
 	me.sin_family = AF_INET;
 	me.sin_port = htons(MDNS_PORT);
-	if (bind(s, (struct sockaddr *)&me, sizeof me) < 0) { diag_printf("mdns: bind failed\n"); close(s); return; }
+	if (bind(s, (struct sockaddr *)&me, sizeof me) < 0) { mdns_state = "bind failed"; diag_printf("mdns: bind failed\n"); close(s); return; }
+	mdns_state = "listening";
 	{
 		unsigned char ttl = 255;
 		setsockopt(s, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof ttl);
@@ -145,6 +154,7 @@ static void mdns_thread(cyg_addrword_t arg)
 		if (now - last_join >= 60) { join_all(s); last_join = now; }
 		n = recvfrom(s, in, sizeof in, 0, (struct sockaddr *)&from, &fl);
 		if (n < 12) continue;
+		mdns_queries++;
 		if (in[2] & 0x80) continue;                      /* a response, not a question */
 		name[0] = 0;
 		CFG_get_str(CFG_SYS_MDNS_NAME, name);
@@ -168,7 +178,7 @@ static void mdns_thread(cyg_addrword_t arg)
 				unsigned long addr = local_addr_for(from.sin_addr.s_addr);
 				int legacy = ntohs(from.sin_port) != MDNS_PORT;
 				int m;
-				if (!addr) break;
+				if (!addr) { mdns_noaddr++; break; }
 				m = mdns_answer(out, legacy ? (unsigned short)(in[0] << 8 | in[1]) : 0, in + off, len, legacy, addr);
 				memset(&to, 0, sizeof to);
 				to.sin_len = sizeof to;
@@ -181,7 +191,7 @@ static void mdns_thread(cyg_addrword_t arg)
 					to.sin_addr.s_addr = inet_addr("224.0.0.251");
 					to.sin_port = htons(MDNS_PORT);
 				}
-				sendto(s, out, m, 0, (struct sockaddr *)&to, sizeof to);
+				if (sendto(s, out, m, 0, (struct sockaddr *)&to, sizeof to) == m) mdns_answers++;
 				break;                                   /* one answer per query */
 			}
 			off += len + 4;

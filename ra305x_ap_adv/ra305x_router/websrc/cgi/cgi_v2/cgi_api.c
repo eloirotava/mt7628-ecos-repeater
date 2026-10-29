@@ -399,6 +399,12 @@ void CGI_wifi_state(http_req *req)
     }
     val[0] = '\0'; CFG_get_str(CFG_SYS_MDNS_NAME, val);
     WEB_printf(req, ",\"mdns_name\":"); wifi_ui_json(req, val);
+    {
+        extern void mdns_status(const char **state, unsigned *queries, unsigned *answers, unsigned *noaddr);
+        const char *ms; unsigned q, an, na;
+        mdns_status(&ms, &q, &an, &na);
+        WEB_printf(req, ",\"mdns\":{\"state\":\"%s\",\"queries\":%u,\"answers\":%u,\"no_address\":%u}", ms, q, an, na);
+    }
     net_state(req);
     WEB_printf(req, ",\"firmware\":{\"busy\":%d,\"state\":", ramboot_web_busy());
     wifi_ui_json(req, ramboot_web_state());
