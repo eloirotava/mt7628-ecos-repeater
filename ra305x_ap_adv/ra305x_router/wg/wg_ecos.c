@@ -65,7 +65,7 @@ const char *wg_ecos_wss_error(void) { return wss_error; }
 
 static void set_status(int s, const char *m)
 {
-	if (!strncmp(m, "WSS", 3)) { strncpy(wss_error, m, sizeof wss_error - 1); wss_error[sizeof wss_error - 1] = 0; }
+	if (!strncmp(m, "WSS:", 4)) { strncpy(wss_error, m, sizeof wss_error - 1); wss_error[sizeof wss_error - 1] = 0; }
 	state = s;
 	strncpy(status, m, sizeof status - 1);
 	status[sizeof status - 1] = 0;
