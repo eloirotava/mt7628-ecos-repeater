@@ -60,8 +60,12 @@ static unsigned char rx_buf[1600], rx_plain[1600], tx_plain[1500], tx_buf[1600];
 
 static long uptime(void) { return (long)(cyg_current_time() / 100); }
 
+static char wss_error[160]; /* last WSS problem, kept after a fallback to UDP */
+const char *wg_ecos_wss_error(void) { return wss_error; }
+
 static void set_status(int s, const char *m)
 {
+	if (!strncmp(m, "WSS", 3)) { strncpy(wss_error, m, sizeof wss_error - 1); wss_error[sizeof wss_error - 1] = 0; }
 	state = s;
 	strncpy(status, m, sizeof status - 1);
 	status[sizeof status - 1] = 0;
@@ -189,13 +193,15 @@ static void send_raw(const unsigned char *b, size_t n)
 static int wss_connect(void)
 {
 	static char req[640];
-	char claims[96], m[128];
+	char claims[96], m[160];
 	uint8_t ip[4];
 	struct sockaddr_in a;
 	const char *err;
 	long n, r;
 	size_t i, end = 0;
-	int fd, one = 1;
+	int fd, one = 1, recs = 0, ctl = 0;
+	const char *why = "failed";
+	char first[17];
 
 	if (dns_resolve(wss_host, ip)) { set_status(WG_HANDSHAKE, "WSS: endpoint name not resolved"); return -1; }
 	addr4(&a, ip, 443);
@@ -229,14 +235,16 @@ static int wss_connect(void)
 	snprintf(claims, sizeof claims, "\",\"p\":{\"Udp\":{\"timeout\":null}},\"r\":\"127.0.0.1\",\"rp\":%u}", wss_port);
 	n = ws_request(req, sizeof req, wss_path, wss_name, claims);
 	wss_rx_len = 0;
-	if (n < 0 || tls_write(&wss_conn, (const uint8_t *)req, (size_t)n)) goto fail;
+	if (n < 0 || tls_write(&wss_conn, (const uint8_t *)req, (size_t)n)) { why = "sending the request"; goto fail; }
 	while (!end) {
 		r = tls_read(&wss_conn, wss_rx + wss_rx_len, sizeof wss_rx - wss_rx_len);
-		if (r < 0) goto fail;
+		recs++;
+		if (r < 0) { why = "no reply (timeout or closed)"; goto fail; }
+		if (r == 0) ctl++;
 		wss_rx_len += (size_t)r;
 		for (i = 0; i + 4 <= wss_rx_len && !end; i++)
 			if (!memcmp(wss_rx + i, "\r\n\r\n", 4)) end = i + 4;
-		if (!end && wss_rx_len == sizeof wss_rx) goto fail;
+		if (!end && wss_rx_len == sizeof wss_rx) { why = "reply too long"; goto fail; }
 	}
 	if (memcmp(wss_rx, "HTTP/1.1 101", 12)) {
 		set_status(WG_HANDSHAKE, "WSS: WebSocket upgrade refused (check the path)");
@@ -251,7 +259,11 @@ static int wss_connect(void)
 	cyg_mutex_unlock(&lock);
 	return 0;
 fail:
-	set_status(WG_HANDSHAKE, "WSS: WebSocket upgrade failed");
+	/* what came back, for the state's wss_error */
+	for (i = 0; i < 16 && i < wss_rx_len; i++) first[i] = wss_rx[i] >= 32 && wss_rx[i] < 127 ? wss_rx[i] : '.';
+	first[i] = 0;
+	snprintf(m, sizeof m, "WSS: upgrade %s; %d records (%d control), %u bytes [%s]", why, recs, ctl, (unsigned)wss_rx_len, first);
+	set_status(WG_HANDSHAKE, m);
 	close(fd);
 	return -1;
 }
