@@ -163,6 +163,10 @@ int main(void)
 	HTTPD_init();
 #endif	
 	wg_ecos_start();   /* WireGuard client; does nothing unless enabled */
+	{
+		extern void mdns_start(void);
+		mdns_start(); /* <name>.local; does nothing while the name is empty */
+	}
 #ifdef CONFIG_FILE_SYSTEM
 	usb_fs_dm_init();
 #endif

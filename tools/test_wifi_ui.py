@@ -57,7 +57,7 @@ assert '_KEY' not in reset, 'factory reset must erase the WireGuard device key, 
 llms = (web / 'llms.txt').read_text()
 assert '## API reference' in llms and 'agent_api' not in llms, 'one file for agents: guide and API reference'
 assert page.count('<%') == 1, 'only the state CGI tag may appear; webcomp parses <%'
-for endpoint in ('wifi_state', 'wifi_apply', 'wifi_scan', 'admin_apply', 'system_apply', 'wg_apply', 'startup_apply', 'networks_apply', 'firmware_apply', 'setup_apply'):
+for endpoint in ('wifi_state', 'wifi_apply', 'wifi_scan', 'admin_apply', 'system_apply', 'wg_apply', 'startup_apply', 'networks_apply', 'firmware_apply', 'setup_apply', 'config_backup', 'config_restore'):
     assert (web / f'{endpoint}.html').is_file(), endpoint
 assert not (web / 'factorySetting.html').exists()
 assert 'WG_KEY' not in source, 'the web interface must never read the WireGuard device private key'
@@ -101,6 +101,12 @@ with tempfile.TemporaryDirectory(prefix='tomada-wg-tests-') as temp:
     sources = [repo / 'tools/wg_host_test.c', router / 'wg/wg_proto.c'] + [router / 'crypto' / f for f in ('blake2s.c', 'c25519.c', 'aead.c', 'sha2.c')]
     subprocess.run(['gcc', '-O2', '-std=gnu99', '-Wall', f'-I{router}/crypto', f'-I{router}/wg', '-o', str(binary)] + [str(f) for f in sources], check=True)
     subprocess.run([str(binary), '--selftest'], check=True)
+
+# mDNS responder parsing and answers (init/mdns.c)
+with tempfile.TemporaryDirectory(prefix='tomada-mdns-tests-') as temp:
+    binary = Path(temp) / 'mdns_test'
+    subprocess.run(['gcc', '-std=gnu99', '-Wall', '-DMDNS_HOST_TEST', f'-I{router}/init', '-o', str(binary), str(repo / 'tools/mdns_test.c')], check=True)
+    subprocess.run([str(binary)], check=True)
 
 # Startup script executor (cli/cmd_boot.c) with a fake command tree
 with tempfile.TemporaryDirectory(prefix='tomada-boot-tests-') as temp:

@@ -2394,6 +2394,49 @@ int CFG_telnet_allowed(void)
 	return 1;
 }
 
+/* Settings as text for a backup and its restore. The WireGuard device key
+ * and the entropy seed never leave the device and are never replaced: a
+ * restored device keeps its own key (the server keeps trusting it). */
+static int cfg_private_line(const char *l)
+{
+	return !strncmp(l, "SYS_WG_KEY=", 11) || !strncmp(l, "SYS_RND_SEED=", 13);
+}
+
+/* drops the private lines in place; returns the new length */
+static int cfg_drop_private(char *buf, int n)
+{
+	int r = 0, w = 0;
+	while (r < n) {
+		int e = r;
+		while (e < n && buf[e] != '\n') e++;
+		if (e < n) e++;
+		if (!cfg_private_line(buf + r)) {
+			memmove(buf + w, buf + r, e - r);
+			w += e - r;
+		}
+		r = e;
+	}
+	buf[w] = 0;
+	return w;
+}
+
+int CFG_backup_text(char *buf, int size)
+{
+	int n;
+	if (size < 2048) return -1;
+	n = CFG_write_prof(buf, size - 1024); /* the last item may overshoot max */
+	if (n < 0) return -1;
+	return cfg_drop_private(buf, n);
+}
+
+/* 0: applied (not saved yet), -1: not a backup of this firmware */
+int CFG_restore_text(char *buf, int n)
+{
+	if (n < CFG_PROFILE_HEADER_LEN || strncmp(buf, CFG_PROFILE_HEADER, CFG_PROFILE_HEADER_LEN)) return -1;
+	n = cfg_drop_private(buf, n);
+	return CFG_read_prof(buf, n) < 0 ? -1 : 0;
+}
+
 void CFG_reset_default()
 {
 	char seed[80];

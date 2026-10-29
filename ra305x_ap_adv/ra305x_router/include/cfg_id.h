@@ -269,6 +269,10 @@
 #define CFG_SYS_BOOT16	CFG_SYS_(115,CFG_TYPE_STR)
 /* DNS server offered by DHCP to networks sent through the WireGuard tunnel */
 #define CFG_SYS_WG_DNS	CFG_SYS_(116,CFG_TYPE_STR)
+/* restart the device when WireGuard has had no session for this many minutes (0: off) */
+#define CFG_SYS_WG_WATCHDOG	CFG_SYS_(117,CFG_TYPE_STR)
+/* mDNS host name: answers as <name>.local (empty: off) */
+#define CFG_SYS_MDNS_NAME	CFG_SYS_(118,CFG_TYPE_STR)
 /* WireGuard client (wg/wg_ecos.c) */
 #define CFG_SYS_WG_EN	CFG_SYS_(50,CFG_TYPE_STR)
 #define CFG_SYS_WG_KEY	CFG_SYS_(51,CFG_TYPE_STR)

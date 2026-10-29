@@ -40,6 +40,7 @@ static long long cyg_current_time(void) { return 12345; }
 int CFG_telnet_allowed(void) { return 0; }
 int wifi_ui_open_fds(void) { return 12; }
 const char *wg_ecos_wss_error(void) { return ""; }
+void mdns_status(const char **s, unsigned *q, unsigned *a, unsigned *n) { *s = "listening"; *q = *a = *n = 0; }
 static unsigned long SYS_wan_ip;
 int HTTPD_reconf;
 #define MON_CMD_REBOOT 2
