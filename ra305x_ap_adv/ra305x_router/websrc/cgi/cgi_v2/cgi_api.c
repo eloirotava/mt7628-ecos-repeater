@@ -340,6 +340,13 @@ void CGI_wifi_state(http_req *req)
         CFG_get_str(CFG_SYS_WG_KEEPALIVE, val);
         WEB_printf(req, ",\"keepalive\":%d,\"dns\":", atoi(val));
         val[0] = '\0'; CFG_get_str(CFG_SYS_WG_DNS, val); wifi_ui_json(req, val[0] ? val : "1.1.1.1");
+        val[0] = '\0'; CFG_get_str(CFG_SYS_WG_TRANSPORT, val);
+        WEB_printf(req, ",\"transport\":\"%s\",\"wss_path\":", strcmp(val, "wss") ? "udp" : "wss");
+        val[0] = '\0'; CFG_get_str(CFG_SYS_WG_WSS_PATH, val); wifi_ui_json(req, val);
+        WEB_printf(req, ",\"wss_name\":");
+        val[0] = '\0'; CFG_get_str(CFG_SYS_WG_WSS_NAME, val); wifi_ui_json(req, val);
+        WEB_printf(req, ",\"wss_key\":");
+        val[0] = '\0'; CFG_get_str(CFG_SYS_WG_WSS_KEY, val); wifi_ui_json(req, val);
         CFG_get_str(CFG_SYS_WG_PSK, val);
         WEB_printf(req, ",\"preshared_key_set\":%d,\"public_key\":", val[0] != '\0');
         wg_ecos_public_key(pub); wifi_ui_json(req, pub);
@@ -7193,7 +7200,7 @@ static int wg_ui_cidr(const char *s)
 
 void CGI_wg_apply(http_req *req)
 {
-    char cur[256], *en, *addr, *peer, *host, *port, *ka, *psk, *dns, *end;
+    char cur[256], *en, *addr, *peer, *host, *port, *ka, *psk, *dns, *end, *tr, *wpath, *wname, *wkey;
     unsigned char tmp[32];
     long p, k;
     if (req->method != METHOD_POST) { WEB_printf(req,"ERROR: POST required"); return; }
@@ -7201,6 +7208,15 @@ void CGI_wg_apply(http_req *req)
     host = WEB_query(req,"ENDPOINT"); port = WEB_query(req,"PORT"); ka = WEB_query(req,"KEEPALIVE");
     psk = WEB_query(req,"PRESHARED_KEY");
     dns = WEB_query(req,"DNS");
+    tr = WEB_query(req,"TRANSPORT"); wpath = WEB_query(req,"WSS_PATH"); wname = WEB_query(req,"WSS_NAME"); wkey = WEB_query(req,"WSS_KEY");
+    if (tr && strcmp(tr,"udp") && strcmp(tr,"wss")) { WEB_printf(req,"ERROR: TRANSPORT must be udp or wss"); return; }
+    if (wpath && *wpath) {
+        const char *c;
+        if (wpath[0] != '/' || strlen(wpath) > 95) { WEB_printf(req,"ERROR: WSS path must start with / (at most 95 characters)"); return; }
+        for (c = wpath; *c; c++) if (*c <= ' ' || *c > '~') { WEB_printf(req,"ERROR: WSS path must be printable ASCII without spaces"); return; }
+    }
+    if (wname && *wname && !net_ui_host(wname)) { WEB_printf(req,"ERROR: WSS TLS name must be a host name"); return; }
+    if (wkey && *wkey && (strlen(wkey) != 64 || strspn(wkey, "0123456789abcdefABCDEF") != 64)) { WEB_printf(req,"ERROR: WSS key must be the server's Ed25519 public key in hex (64 characters)"); return; }
     if (dns && *dns) {
         struct in_addr a;
         if (!inet_aton(dns, &a) || !a.s_addr || a.s_addr == 0xffffffffUL) { WEB_printf(req,"ERROR: DNS must be an IPv4 address, for example 1.1.1.1"); return; }
@@ -7222,13 +7238,25 @@ void CGI_wg_apply(http_req *req)
         cur[0] = '\0';
         CFG_get_str(CFG_SYS_ADMPASS, cur);
         if (!cur[0]) { WEB_printf(req,"ERROR: set an admin password before enabling WireGuard"); return; }
+        cur[0] = '\0';
+        if (tr) strcpy(cur, tr); else CFG_get_str(CFG_SYS_WG_TRANSPORT, cur);
+        if (!strcmp(cur,"wss")) {
+            cur[0] = '\0';
+            if (wkey) strcpy(cur, wkey); else CFG_get_str(CFG_SYS_WG_WSS_KEY, cur);
+            if (!cur[0]) { WEB_printf(req,"ERROR: WSS needs the server's Ed25519 key"); return; }
+            cur[0] = '\0';
+            if (wpath) strcpy(cur, wpath); else CFG_get_str(CFG_SYS_WG_WSS_PATH, cur);
+            if (!cur[0]) { WEB_printf(req,"ERROR: WSS needs a path"); return; }
+        }
     }
     sprintf(cur, "%ld", k);
     if (CFG_set_str(CFG_SYS_WG_EN,en) < 0 || CFG_set_str(CFG_SYS_WG_ADDR,addr) < 0 ||
         CFG_set_str(CFG_SYS_WG_PEER,peer) < 0 || CFG_set_str(CFG_SYS_WG_HOST,host) < 0 ||
         CFG_set_str(CFG_SYS_WG_PORT,port) < 0 || CFG_set_str(CFG_SYS_WG_KEEPALIVE,cur) < 0 ||
         (psk && strcmp(psk,"keep") && CFG_set_str(CFG_SYS_WG_PSK,psk) < 0) ||
-        (dns && CFG_set_str(CFG_SYS_WG_DNS, *dns ? dns : "1.1.1.1") < 0)) { WEB_printf(req,"ERROR: settings could not be applied"); return; }
+        (dns && CFG_set_str(CFG_SYS_WG_DNS, *dns ? dns : "1.1.1.1") < 0) ||
+        (tr && CFG_set_str(CFG_SYS_WG_TRANSPORT,tr) < 0) || (wpath && CFG_set_str(CFG_SYS_WG_WSS_PATH,wpath) < 0) ||
+        (wname && CFG_set_str(CFG_SYS_WG_WSS_NAME,wname) < 0) || (wkey && CFG_set_str(CFG_SYS_WG_WSS_KEY,wkey) < 0)) { WEB_printf(req,"ERROR: settings could not be applied"); return; }
     CFG_commit(CFG_NO_EVENT);
     if (CFG_save_user()) { WEB_printf(req,"ERROR: saving to flash failed"); return; }
     WEB_printf(req,"OK");

@@ -278,6 +278,11 @@
 #define CFG_SYS_WG_PORT	CFG_SYS_(55,CFG_TYPE_STR)
 #define CFG_SYS_WG_KEEPALIVE	CFG_SYS_(56,CFG_TYPE_STR)
 #define CFG_SYS_WG_PSK	CFG_SYS_(57,CFG_TYPE_STR)
+/* WireGuard transport: udp, or wss (wstunnel: WebSocket over TLS 1.3 to ENDPOINT:443) */
+#define CFG_SYS_WG_TRANSPORT	CFG_SYS_(58,CFG_TYPE_STR)
+#define CFG_SYS_WG_WSS_PATH	CFG_SYS_(59,CFG_TYPE_STR)
+#define CFG_SYS_WG_WSS_NAME	CFG_SYS_(60,CFG_TYPE_STR)
+#define CFG_SYS_WG_WSS_KEY	CFG_SYS_(61,CFG_TYPE_STR)
 
 // UPNP
 #define CFG_UPP_(idx,type)  CFG_ID_(CFG_ID_UPP,idx,type,0)

@@ -182,6 +182,17 @@ legend{font-weight:600;padding:0 4px}
 <label for="wg-psk">Preshared key (optional)</label>
 <input id="wg-psk" type="password" maxlength="44" autocomplete="off" spellcheck="false">
 <small id="wg-psk-hint">Leave empty for none.</small>
+<label class="check"><input type="checkbox" id="wg-wss"> Carry WireGuard over HTTPS (wstunnel WebSocket, TCP 443)</label>
+<small>For networks that block UDP. The server must run wstunnel and forward to the server port above on its own address.</small>
+<div id="wg-wss-fields">
+<label for="wg-wss-path">WebSocket path</label>
+<input id="wg-wss-path" maxlength="95" autocomplete="off" spellcheck="false" placeholder="/wstunnel/events">
+<label for="wg-wss-name">TLS name (optional)</label>
+<input id="wg-wss-name" maxlength="63" autocomplete="off" spellcheck="false" placeholder="same as the endpoint">
+<label for="wg-wss-key">Server TLS key (Ed25519, hex)</label>
+<input id="wg-wss-key" maxlength="64" autocomplete="off" spellcheck="false" placeholder="64 hex characters">
+<small>The connection is trusted only if the server's certificate carries this key.</small>
+</div>
 <div class="row"><button type="submit">Save &amp; restart</button></div>
 <p id="wg-msg" class="msg" role="status" aria-live="polite"></p>
 </section>
@@ -383,6 +394,11 @@ function fillForms() {
   $('wg-endpoint').value = wg.endpoint || '';
   $('wg-port').value = String(wg.port || 51820);
   $('wg-keepalive').value = String(wg.keepalive != null && wg.port ? wg.keepalive : 25);
+  $('wg-wss').checked = wg.transport === 'wss';
+  $('wg-wss-path').value = wg.wss_path || '/wstunnel/events';
+  $('wg-wss-name').value = wg.wss_name || '';
+  $('wg-wss-key').value = wg.wss_key || '';
+  $('wg-wss-fields').hidden = !$('wg-wss').checked;
   $('wg-dns').value = wg.dns || '1.1.1.1';
   update();
 }
@@ -597,6 +613,7 @@ $('wg-copy').addEventListener('click', async function () {
   catch (e) { msg(out, 'Copy failed; select the key above and copy it manually.', 'bad'); }
 });
 
+$('wg-wss').addEventListener('change', function () { $('wg-wss-fields').hidden = !this.checked; });
 $('wg-form').addEventListener('submit', async function (e) {
   e.preventDefault();
   var out = $('wg-msg'), wg = state.wireguard || {};
@@ -613,11 +630,18 @@ $('wg-form').addEventListener('submit', async function (e) {
   if (dns && !/^(\d{1,3}\.){3}\d{1,3}$/.test(dns)) return msg(out, 'DNS: an IPv4 address, for example 1.1.1.1.', 'bad');
   if (en && (!addr || !peer || !host)) return msg(out, 'Enter the tunnel address, server public key and endpoint to enable WireGuard.', 'bad');
   if (en && !state.admin_password_set) return msg(out, 'Set an admin password first (Administration).', 'bad');
+  var wss = $('wg-wss').checked, wpath = $('wg-wss-path').value.trim(), wname = $('wg-wss-name').value.trim(), wkey = $('wg-wss-key').value.trim().toLowerCase();
+  if (wss && !/^\/[!-~]{0,94}$/.test(wpath)) return msg(out, 'WebSocket path: starts with “/”, no spaces.', 'bad');
+  if (wname && !/^[A-Za-z0-9.-]{1,63}$/.test(wname)) return msg(out, 'TLS name: a host name.', 'bad');
+  if ((wss || wkey) && !/^[0-9a-f]{64}$/.test(wkey)) return msg(out, 'Server TLS key: 64 hex characters.', 'bad');
   if (!window.confirm('Save WireGuard settings and restart the device?')) return;
   var body = new URLSearchParams();
   body.set('ENABLED', en ? '1' : '0'); body.set('ADDRESS', addr); body.set('PEER_PUBLIC_KEY', peer);
   body.set('ENDPOINT', host); body.set('PORT', port); body.set('KEEPALIVE', ka);
   body.set('PRESHARED_KEY', psk || (wg.preshared_key_set ? 'keep' : ''));
+  body.set('TRANSPORT', wss ? 'wss' : 'udp');
+  if (wss || wpath) body.set('WSS_PATH', wpath);
+  body.set('WSS_NAME', wname); body.set('WSS_KEY', wkey);
   body.set('DNS', dns || '1.1.1.1');
   try {
     var text = await post('/wg_apply.html', body, 5000);
