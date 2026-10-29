@@ -533,6 +533,21 @@ int Wireless_start()
     {
         sprintf(ifName, "apcli0");
         result = netif_up(ifName);
+        if (result) {
+            /* The driver reads ApCliBssid only as a runtime command, never
+             * from the profile: without this the uplink is chosen by name
+             * alone and may join (or stay stuck on) another access point. */
+            extern int CmdIwpriv(int argc, char *argv[]);
+            char bssid[40], arg[64];
+            char *av[3];
+            bssid[0] = 0;
+            CFG_get_str(CFG_WLN_ApCliBssid, bssid);
+            if (strlen(bssid) == 17) {
+                snprintf(arg, sizeof arg, "ApCliBssid=%s", bssid);
+                av[0] = "apcli0"; av[1] = "set"; av[2] = arg;
+                CmdIwpriv(3, av);
+            }
+        }
 #ifdef CONFIG_BRIDGE
     if ((result) && ((opmode == 1) || (opmode == 3))) {
 			sprintf(temp_cfg, "%s, %s", bridge_cfg, "apcli0");
