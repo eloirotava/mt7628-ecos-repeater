@@ -1,7 +1,7 @@
 # Makefile
 
 include $(TOPDIR)/.config
-ALL_OBJS = lan_start.o wan_start.o main.o mon_task.o start.o mod_init.o version.o config_options.o dns_config.o httpd_config.o serial_communication.o cpuid.o net_extra.o mdns.o logbuf.o
+ALL_OBJS = lan_start.o wan_start.o main.o mon_task.o start.o mod_init.o version.o config_options.o dns_config.o httpd_config.o serial_communication.o cpuid.o net_extra.o mdns.o logbuf.o sched.o
 
 #ifdef	CONFIG_BRIDGE
 #ALL_OBJS += br_start.o 

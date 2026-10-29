@@ -175,6 +175,10 @@ int main(void)
 		extern void logbuf_start(void);
 		logbuf_start(); /* remote syslog; does nothing while SYS_LOG_SERVER is empty */
 	}
+	{
+		extern void sched_start(void);
+		sched_start(); /* networks 2..7 on only inside their SYS_NETn_SCHED window */
+	}
 #ifdef CONFIG_FILE_SYSTEM
 	usb_fs_dm_init();
 #endif

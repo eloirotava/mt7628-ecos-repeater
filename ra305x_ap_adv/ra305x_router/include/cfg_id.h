@@ -275,6 +275,15 @@
 #define CFG_SYS_MDNS_NAME	CFG_SYS_(118,CFG_TYPE_STR)
 /* remote syslog server for the console log, "a.b.c.d[:port]" (empty: off) */
 #define CFG_SYS_LOG_SERVER	CFG_SYS_(119,CFG_TYPE_STR)
+/* networks 2..7: on only inside "HH:MM-HH:MM" local time (empty: always) */
+#define CFG_SYS_NET2_SCHED	CFG_SYS_(120,CFG_TYPE_STR)
+#define CFG_SYS_NET3_SCHED	CFG_SYS_(121,CFG_TYPE_STR)
+#define CFG_SYS_NET4_SCHED	CFG_SYS_(122,CFG_TYPE_STR)
+#define CFG_SYS_NET5_SCHED	CFG_SYS_(123,CFG_TYPE_STR)
+#define CFG_SYS_NET6_SCHED	CFG_SYS_(124,CFG_TYPE_STR)
+#define CFG_SYS_NET7_SCHED	CFG_SYS_(125,CFG_TYPE_STR)
+/* local time offset from UTC in minutes (default -180) */
+#define CFG_SYS_TZ_OFFSET	CFG_SYS_(126,CFG_TYPE_STR)
 /* WireGuard client (wg/wg_ecos.c) */
 #define CFG_SYS_WG_EN	CFG_SYS_(50,CFG_TYPE_STR)
 #define CFG_SYS_WG_KEY	CFG_SYS_(51,CFG_TYPE_STR)

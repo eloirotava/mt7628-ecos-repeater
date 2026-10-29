@@ -83,7 +83,8 @@ GET /wifi_state.html returns JSON:
 - chip, version, build (UNIX time), uptime (seconds), mdns_name (the .local name; empty: mDNS off), open_fds (open descriptors, out of 256), wss_error (the last WSS problem, empty if none).
 - firmware: busy, state and error of the last firmware check, test or installation.
 - lan (router and gateway modes): address (IPv4/prefix), dhcp (0 or 1). wan_address (gateway mode): the address the Ethernet uplink got by DHCP, empty until it has one.
-- networks: seven objects (id 1-7) with enabled, ssid, security (open or wpa2), isolate (0 or 1), type (nat or bridge), address (the NAT range, empty for bridge), reach, internet and via (wan or wg).
+- networks: seven objects (id 1-7) with enabled, ssid, security (open or wpa2), isolate (0 or 1), type (nat or bridge), address (the NAT range, empty for bridge), reach, internet and via (wan or wg); ids 2-7 also schedule (HH:MM-HH:MM or empty) and off_by_schedule (1 while outside the window).
+- time (local HH:MM, empty while unknown) and tz_offset (minutes from UTC).
 - wireguard: enabled, address (tunnel address/prefix), peer_public_key, endpoint, port, watchdog (minutes, 0: off), keepalive, dns, transport (udp or wss), wss_path, wss_name, wss_key, preshared_key_set, public_key (this device, base64; new after every factory reset), state (off, starting, clock, handshake, connected or error), status, handshake_age (seconds, -1 before the first), rx_bytes and tx_bytes.
 
 Passwords are never returned.
@@ -101,6 +102,7 @@ POST /setup_apply.html sets everything in one request; the device saves and rest
 - For each n from 1 to COUNT: SSIDn (1-32 bytes); SECURITYn (open or wpa2); PASSWORDn (8-63 ASCII; empty keeps the stored key when the network already used WPA2); TYPEn (nat or bridge); ISOLATEn (1: clients cannot see each other).
 - For NAT networks: ADDRESSn (IPv4/prefix 8-30, the device's address; DHCP hands out .100-.199); INTERNETn (1 default, or 0); REACHn (comma list of what the network may open connections to: device, net1 ... net7, lan (the local network on the Internet side), wg; empty: only the Internet); VIAn (wan default, or wg: Internet through the WireGuard tunnel, dropped if the tunnel is down; DNS offered is the WireGuard DNS, default 1.1.1.1).
 - DHCP1: 1 (default) or 0, for network 1 when it is NAT and no network is bridged.
+- SCHEDn (networks 2-7, optional): HH:MM-HH:MM in local time (see ACTION=time); the network is on only inside that window, which may cross midnight (22:00-06:00); empty: always on. Network 1 always stays on. Until the device knows the time (SNTP over the Internet) no network is turned off.
 Ranges overlapping each other or the WireGuard network are refused. Others can always open connections into a NAT network and get replies; use REACH on the other side to allow the reverse. Invalid fields are rejected before anything changes.
 
 The endpoints below (/wifi_apply.html, /networks_apply.html) are older shortcuts for the same settings and keep working.
@@ -133,7 +135,7 @@ POST /admin_apply.html with USER (1-31 printable ASCII characters, no spaces or 
 
 ### System
 
-POST /system_apply.html with ACTION=reboot (restart), ACTION=factory (erase settings, restore factory defaults and restart) or ACTION=name&NAME=<name> (the mDNS host name: 1-63 letters, digits or "-", not at the ends; empty turns mDNS off; saved without restarting; factory default "extender"). The connection drops; the device returns after about one minute. Factory defaults: Ethernet router mode with the open network "Extender-<Wi-Fi MAC>" at 192.168.11.1/24 (DHCP), no admin password, Telnet disabled, WireGuard disabled with a new device key. The reset button does the same when held for more than 4 seconds; a short press restarts.
+POST /system_apply.html with ACTION=reboot (restart), ACTION=factory (erase settings, restore factory defaults and restart), ACTION=time&TZ=<minutes from UTC, -720 to 840, default -180> (local time for network schedules) or ACTION=name&NAME=<name> (the mDNS host name: 1-63 letters, digits or "-", not at the ends; empty turns mDNS off; saved without restarting; factory default "extender"). The connection drops; the device returns after about one minute. Factory defaults: Ethernet router mode with the open network "Extender-<Wi-Fi MAC>" at 192.168.11.1/24 (DHCP), no admin password, Telnet disabled, WireGuard disabled with a new device key. The reset button does the same when held for more than 4 seconds; a short press restarts.
 
 ### WireGuard
 

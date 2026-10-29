@@ -23,7 +23,7 @@ with tempfile.TemporaryDirectory(prefix='tomada-wifi-tests-') as temp:
     cfile = Path(temp) / 'test.c'
     binary = Path(temp) / 'test'
     cfile.write_text(harness)
-    subprocess.run(['gcc', '-std=gnu99', '-Werror=implicit-function-declaration', str(cfile), '-o', str(binary)], check=True)
+    subprocess.run(['gcc', '-std=gnu99', '-Werror=implicit-function-declaration', f'-I{repo}/ra305x_ap_adv/ra305x_router/init', str(cfile), '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True)
 subprocess.run(['node', str(repo / 'tools/wifi_ui_test.js'), str(web / 'index.html')], check=True)
 
@@ -112,6 +112,12 @@ with tempfile.TemporaryDirectory(prefix='tomada-mdns-tests-') as temp:
 with tempfile.TemporaryDirectory(prefix='tomada-log-tests-') as temp:
     binary = Path(temp) / 'logbuf_test'
     subprocess.run(['gcc', '-std=gnu99', '-Wall', '-DLOGBUF_HOST_TEST', f'-I{router}/init', '-o', str(binary), str(repo / 'tools/logbuf_test.c')], check=True)
+    subprocess.run([str(binary)], check=True)
+
+# Network schedule (init/sched.c)
+with tempfile.TemporaryDirectory(prefix='tomada-sched-tests-') as temp:
+    binary = Path(temp) / 'sched_test'
+    subprocess.run(['gcc', '-std=gnu99', '-Wall', '-DSCHED_HOST_TEST', f'-I{router}/init', '-o', str(binary), str(repo / 'tools/sched_test.c')], check=True)
     subprocess.run([str(binary)], check=True)
 
 # Startup script executor (cli/cmd_boot.c) with a fake command tree

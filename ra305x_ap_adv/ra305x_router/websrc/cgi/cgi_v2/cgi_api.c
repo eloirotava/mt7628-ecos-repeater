@@ -399,6 +399,16 @@ void CGI_wifi_state(http_req *req)
     }
     val[0] = '\0'; CFG_get_str(CFG_SYS_MDNS_NAME, val);
     WEB_printf(req, ",\"mdns_name\":"); wifi_ui_json(req, val);
+    {
+        extern long wg_ecos_unix_time(int sync);
+        extern int sched_tz(void);
+        extern int sched_minute(long unix_time, int tz_minutes);
+        long t = wg_ecos_unix_time(0);
+        int m = t ? sched_minute(t, sched_tz()) : 0;
+        if (t) WEB_printf(req, ",\"time\":\"%02d:%02d\"", m / 60, m % 60);
+        else WEB_printf(req, ",\"time\":\"\"");
+        WEB_printf(req, ",\"tz_offset\":%d", sched_tz());
+    }
     val[0] = '\0'; CFG_get_str(CFG_SYS_LOG_SERVER, val);
     WEB_printf(req, ",\"log_server\":"); wifi_ui_json(req, val);
     {
@@ -7365,6 +7375,7 @@ static const int net_ip_ids[NET_MAX - 1] = { CFG_SYS_NET2_IP, CFG_SYS_NET3_IP, C
 static const int net_reach_ids[NET_MAX - 1] = { CFG_SYS_NET2_REACH, CFG_SYS_NET3_REACH, CFG_SYS_NET4_REACH, CFG_SYS_NET5_REACH, CFG_SYS_NET6_REACH, CFG_SYS_NET7_REACH };
 static const int net_inet_ids[NET_MAX - 1] = { CFG_SYS_NET2_INTERNET, CFG_SYS_NET3_INTERNET, CFG_SYS_NET4_INTERNET, CFG_SYS_NET5_INTERNET, CFG_SYS_NET6_INTERNET, CFG_SYS_NET7_INTERNET };
 static const int net_via_ids[NET_MAX - 1] = { CFG_SYS_NET2_VIA, CFG_SYS_NET3_VIA, CFG_SYS_NET4_VIA, CFG_SYS_NET5_VIA, CFG_SYS_NET6_VIA, CFG_SYS_NET7_VIA };
+static const int net_sched_ids[NET_MAX - 1] = { CFG_SYS_NET2_SCHED, CFG_SYS_NET3_SCHED, CFG_SYS_NET4_SCHED, CFG_SYS_NET5_SCHED, CFG_SYS_NET6_SCHED, CFG_SYS_NET7_SCHED };
 
 /* item idx of a ';' list into out ("" when missing) */
 static void net_list_get(char *out, const char *list, int idx)
@@ -7490,6 +7501,12 @@ static void net_state(http_req *req)
             WEB_printf(req, ",\"internet\":%d", strcmp(val, "0") != 0);
             val[0] = 0; CFG_get_str(net_via_ids[n - 1], val);
             WEB_printf(req, ",\"via\":\"%s\"", strcmp(val, "wg") ? "wan" : "wg");
+            {
+                extern int sched_is_off(int n);
+                val[0] = 0; CFG_get_str(net_sched_ids[n - 1], val);
+                WEB_printf(req, ",\"schedule\":"); wifi_ui_json(req, val);
+                WEB_printf(req, ",\"off_by_schedule\":%d", sched_is_off(n + 1));
+            }
         }
         WEB_printf(req, "}");
     }
@@ -7602,7 +7619,7 @@ void CGI_setup_apply(http_req *req)
 {
     extern int net_extra_parse(const char *s, unsigned long *ip, unsigned long *mask);
     char key[16], *v, *uplink, *upssid, *upsec, *upkey, *bssid, *channel, *eth, *dhcp1, *end;
-    char *ssid[NET_MAX], *sec[NET_MAX], *pw[NET_MAX], *type[NET_MAX], *addr[NET_MAX], *inet[NET_MAX], *reach[NET_MAX], *iso[NET_MAX], *via[NET_MAX];
+    char *ssid[NET_MAX], *sec[NET_MAX], *pw[NET_MAX], *type[NET_MAX], *addr[NET_MAX], *inet[NET_MAX], *reach[NET_MAX], *iso[NET_MAX], *via[NET_MAX], *sched[NET_MAX];
     unsigned long ip[NET_MAX], mask[NET_MAX];
     char auth[256], enc[256], nofw[256], tmp[256], cur[256], curup[64], curupkey[80], countstr[4];
     char lanip[20], lanmask[20], dstart[20], dend[20];
@@ -7649,6 +7666,13 @@ void CGI_setup_apply(http_req *req)
         sprintf(key, "REACH%d", n + 1); reach[n] = WEB_query(req, key);
         sprintf(key, "ISOLATE%d", n + 1); iso[n] = WEB_query(req, key);
         sprintf(key, "VIA%d", n + 1); via[n] = WEB_query(req, key);
+        sprintf(key, "SCHED%d", n + 1); sched[n] = WEB_query(req, key);
+        if (sched[n] && *sched[n]) {
+            extern int sched_parse(const char *s, int *from, int *to);
+            int f, t;
+            if (!n) { WEB_printf(req,"ERROR: network 1 always stays on; SCHED is for networks 2-7"); return; }
+            if (sched_parse(sched[n], &f, &t)) { WEB_printf(req,"ERROR: SCHED%d must be HH:MM-HH:MM (local time), or empty", n + 1); return; }
+        }
         if (!wifi_ui_text(ssid[n],1,32)) { WEB_printf(req,"ERROR: SSID%d must be 1-32 bytes", n + 1); return; }
         if (!sec[n] || (strcmp(sec[n],"open") && strcmp(sec[n],"wpa2"))) { WEB_printf(req,"ERROR: SECURITY%d must be open or wpa2", n + 1); return; }
         if (!strcmp(sec[n],"wpa2") && (!pw[n] || !*pw[n])) {
@@ -7743,6 +7767,7 @@ void CGI_setup_apply(http_req *req)
         SET(net_ssid_ids[n], ssid[n]);
         if (pw[n]) SET(net_key_ids[n], strcmp(sec[n],"open") ? pw[n] : "");
         if (n) SET(net_ip_ids[n - 1], nat[n] ? addr[n] : "");
+        if (n) SET(net_sched_ids[n - 1], sched[n] ? sched[n] : "");
         SET(n ? net_inet_ids[n - 1] : CFG_SYS_NET1_INTERNET, nat[n] && inet[n] ? inet[n] : "1");
         SET(n ? net_reach_ids[n - 1] : CFG_SYS_NET1_REACH, nat[n] && reach[n] ? reach[n] : (n ? "" : "device"));
         SET(n ? net_via_ids[n - 1] : CFG_SYS_NET1_VIA, nat[n] && via[n] ? via[n] : "wan");
@@ -7821,6 +7846,15 @@ void CGI_system_apply(http_req *req)
         CFG_commit(CFG_NO_EVENT);
         if (CFG_save_user()) { WEB_printf(req,"ERROR: saving to flash failed"); return; }
         WEB_printf(req,"OK");
+    } else if (action && !strcmp(action,"time")) {
+        /* local time offset from UTC in minutes, for the network schedule */
+        char *tz = WEB_query(req,"TZ"), *end;
+        long v = tz ? strtol(tz, &end, 10) : 0;
+        if (!tz || !*tz || *end || v < -720 || v > 840) { WEB_printf(req,"ERROR: TZ must be minutes from UTC, -720 to 840 (for example -180)"); return; }
+        if (CFG_set_str(CFG_SYS_TZ_OFFSET, tz) < 0) { WEB_printf(req,"ERROR: settings could not be applied"); return; }
+        CFG_commit(CFG_NO_EVENT);
+        if (CFG_save_user()) { WEB_printf(req,"ERROR: saving to flash failed"); return; }
+        WEB_printf(req,"OK");
     } else if (action && !strcmp(action,"log")) {
         /* remote syslog server for the console log; empty turns it off */
         extern int logbuf_parse_server(const char *s, unsigned long *ip, unsigned short *port);
@@ -7833,7 +7867,7 @@ void CGI_system_apply(http_req *req)
         if (CFG_save_user()) { WEB_printf(req,"ERROR: saving to flash failed"); return; }
         WEB_printf(req,"OK");
     } else
-        WEB_printf(req,"ERROR: ACTION must be reboot, factory, name or log");
+        WEB_printf(req,"ERROR: ACTION must be reboot, factory, name, time or log");
 }
 
 /* GET /log.html: the last console messages (8 KB ring, oldest first) */
