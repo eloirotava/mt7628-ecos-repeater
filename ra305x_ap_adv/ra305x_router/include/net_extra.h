@@ -2,7 +2,7 @@
 #ifndef NET_EXTRA_H
 #define NET_EXTRA_H
 
-#define NET_EXTRA_MAX 3 /* networks 2..4 on ra1..ra3 */
+#define NET_EXTRA_MAX 6 /* networks 2..7 on ra1..ra6 */
 
 int net_extra_parse(const char *s, unsigned long *ip, unsigned long *mask);
 int net_extra_routed(int n, unsigned long *ip, unsigned long *mask);

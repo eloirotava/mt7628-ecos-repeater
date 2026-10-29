@@ -165,7 +165,7 @@ int main(void) {
 #define Q(k,v) do{for(i=0;i<12&&names[i];i++);names[i]=(k);values[i]=(v);}while(0)
  NETSETUP();Q("COUNT","3");Q("SSID2","guest");Q("SECURITY2","open");Q("ADDRESS2","10.0.2.1/24");Q("ISOLATE2","1");Q("SSID3","iot");Q("SECURITY3","wpa2");Q("PASSWORD3","iot-pass-123");Q("ADDRESS3","10.0.3.1/24");Q("INTERNET3","1");Q("REACH3","lan,net2");
  CGI_networks_apply(&post);assert(!strcmp(output,"OK"));assert(reboots==1);assert(!strcmp(cfg[CFG_WLN_BssidNum],"3"));assert(!strcmp(cfg[CFG_WLN_SSID2],"guest"));assert(!strcmp(cfg[CFG_SYS_NET2_IP],"10.0.2.1/24"));
- assert(!strcmp(cfg[CFG_WLN_AuthMode],"OPEN;OPEN;WPA2PSK;OPEN"));assert(!strcmp(cfg[CFG_WLN_EncrypType],"NONE;NONE;AES;NONE"));assert(!strcmp(cfg[CFG_WLN_NoForwarding],"0;1;0;0"));
+ assert(!strcmp(cfg[CFG_WLN_AuthMode],"OPEN;OPEN;WPA2PSK;OPEN;OPEN;OPEN;OPEN"));assert(!strcmp(cfg[CFG_WLN_EncrypType],"NONE;NONE;AES;NONE;NONE;NONE;NONE"));assert(!strcmp(cfg[CFG_WLN_NoForwarding],"0;1;0;0;0;0;0"));
  assert(!strcmp(cfg[CFG_WLN_WPAPSK3],"iot-pass-123"));assert(!strcmp(cfg[CFG_SYS_NET3_REACH],"lan,net2"));assert(!strcmp(cfg[CFG_SYS_NET2_INTERNET],"1"));
  NETSETUP();Q("COUNT","2");Q("SSID2","guest");Q("SECURITY2","open");Q("ADDRESS2","10.0.1.129/25");CGI_networks_apply(&post);assert(strstr(output,"overlaps the LAN"));assert(sets==0);
  NETSETUP();Q("COUNT","2");Q("SSID2","guest");Q("SECURITY2","open");Q("ADDRESS2","10.8.0.1/16");CGI_networks_apply(&post);assert(strstr(output,"WireGuard"));assert(sets==0);
@@ -178,7 +178,7 @@ int main(void) {
  NETSETUP();Q("COUNT","2");Q("SSID2","guest");Q("SECURITY2","open");Q("ADDRESS2","10.0.2.1/24");Q("VIA2","tunnel");CGI_networks_apply(&post);assert(strstr(output,"VIA2"));assert(sets==0);
  NETSETUP();Q("COUNT","2");Q("SSID2","guest");Q("SECURITY2","open");Q("ADDRESS2","10.0.2.1/24");Q("VIA2","wg");CGI_networks_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[CFG_SYS_NET2_VIA],"wg"));
  NETSETUP();Q("COUNT","2");Q("SSID2","guest");Q("SECURITY2","open");CGI_networks_apply(&post);assert(!strcmp(cfg[CFG_SYS_NET2_VIA],"wan"));
- NETSETUP();Q("COUNT","5");CGI_networks_apply(&post);assert(strstr(output,"COUNT"));assert(sets==0);
+ NETSETUP();Q("COUNT","8");CGI_networks_apply(&post);assert(strstr(output,"COUNT"));assert(sets==0);
  NETSETUP();Q("COUNT","2");Q("SSID2","x");Q("SECURITY2","open");CGI_networks_apply(&get);assert(strstr(output,"POST required"));
  /* state */
  NETSETUP();strcpy(cfg[CFG_WLN_BssidNum],"2");strcpy(cfg[CFG_WLN_SSID2],"guest");strcpy(cfg[CFG_SYS_NET2_IP],"10.0.2.1/24");strcpy(cfg[CFG_SYS_NET2_INTERNET],"1");strcpy(cfg[CFG_LAN_DHCPD_EN],"1");strcpy(cfg[CFG_WLN_WPAPSK2],"secret-net-key");

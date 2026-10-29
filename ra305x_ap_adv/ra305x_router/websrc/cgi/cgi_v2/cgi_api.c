@@ -7247,14 +7247,16 @@ void CGI_startup_apply(http_req *req)
     WEB_printf(req,"OK");
 }
 
-/* ---- Wi-Fi networks 1..4 (SSID1..SSID4). Network 1 is the main one;
- * 2..4 are bridged with it or, in router mode, routed (init/net_extra.c). */
-static const int net_ssid_ids[4] = { CFG_WLN_SSID1, CFG_WLN_SSID2, CFG_WLN_SSID3, CFG_WLN_SSID4 };
-static const int net_key_ids[4] = { CFG_WLN_WPAPSK1, CFG_WLN_WPAPSK2, CFG_WLN_WPAPSK3, CFG_WLN_WPAPSK4 };
-static const int net_ip_ids[3] = { CFG_SYS_NET2_IP, CFG_SYS_NET3_IP, CFG_SYS_NET4_IP };
-static const int net_reach_ids[3] = { CFG_SYS_NET2_REACH, CFG_SYS_NET3_REACH, CFG_SYS_NET4_REACH };
-static const int net_inet_ids[3] = { CFG_SYS_NET2_INTERNET, CFG_SYS_NET3_INTERNET, CFG_SYS_NET4_INTERNET };
-static const int net_via_ids[3] = { CFG_SYS_NET2_VIA, CFG_SYS_NET3_VIA, CFG_SYS_NET4_VIA };
+/* ---- Wi-Fi networks 1..7 (SSID1..SSID7 on ra0..ra6; the radio has 8 beacons
+ * and a Wi-Fi uplink takes one). Network 1 is the main one; 2..7 are bridged
+ * with it or, in router mode, routed (init/net_extra.c). */
+#define NET_MAX 7
+static const int net_ssid_ids[NET_MAX] = { CFG_WLN_SSID1, CFG_WLN_SSID2, CFG_WLN_SSID3, CFG_WLN_SSID4, CFG_WLN_SSID5, CFG_WLN_SSID6, CFG_WLN_SSID7 };
+static const int net_key_ids[NET_MAX] = { CFG_WLN_WPAPSK1, CFG_WLN_WPAPSK2, CFG_WLN_WPAPSK3, CFG_WLN_WPAPSK4, CFG_WLN_WPAPSK5, CFG_WLN_WPAPSK6, CFG_WLN_WPAPSK7 };
+static const int net_ip_ids[NET_MAX - 1] = { CFG_SYS_NET2_IP, CFG_SYS_NET3_IP, CFG_SYS_NET4_IP, CFG_SYS_NET5_IP, CFG_SYS_NET6_IP, CFG_SYS_NET7_IP };
+static const int net_reach_ids[NET_MAX - 1] = { CFG_SYS_NET2_REACH, CFG_SYS_NET3_REACH, CFG_SYS_NET4_REACH, CFG_SYS_NET5_REACH, CFG_SYS_NET6_REACH, CFG_SYS_NET7_REACH };
+static const int net_inet_ids[NET_MAX - 1] = { CFG_SYS_NET2_INTERNET, CFG_SYS_NET3_INTERNET, CFG_SYS_NET4_INTERNET, CFG_SYS_NET5_INTERNET, CFG_SYS_NET6_INTERNET, CFG_SYS_NET7_INTERNET };
+static const int net_via_ids[NET_MAX - 1] = { CFG_SYS_NET2_VIA, CFG_SYS_NET3_VIA, CFG_SYS_NET4_VIA, CFG_SYS_NET5_VIA, CFG_SYS_NET6_VIA, CFG_SYS_NET7_VIA };
 
 /* item idx of a ';' list into out ("" when missing) */
 static void net_list_get(char *out, const char *list, int idx)
@@ -7268,13 +7270,13 @@ static void net_list_get(char *out, const char *list, int idx)
     out[e - p] = 0;
 }
 
-/* list with item idx replaced; padded to 4 items with pad */
+/* list with item idx replaced; padded to NET_MAX items with pad */
 static void net_list_set(char *out, const char *list, int idx, const char *val, const char *pad)
 {
     char item[64];
     int i;
     out[0] = 0;
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < NET_MAX; i++) {
         if (i) strcat(out, ";");
         if (i == idx) { strcat(out, val); continue; }
         net_list_get(item, list, i);
@@ -7288,7 +7290,8 @@ static int net_reach_ok(const char *s)
     if (strlen(s) >= sizeof buf) return 0;
     strcpy(buf, s);
     for (t = strtok_r(buf, ",", &save); t; t = strtok_r(0, ",", &save))
-        if (strcmp(t,"device") && strcmp(t,"lan") && strcmp(t,"net2") && strcmp(t,"net3") && strcmp(t,"net4") && strcmp(t,"wg")) return 0;
+        if (strcmp(t,"device") && strcmp(t,"lan") && strcmp(t,"wg") &&
+            !(t[0] == 'n' && t[1] == 'e' && t[2] == 't' && t[3] >= '2' && t[3] <= '0' + NET_MAX && !t[4])) return 0;
     return 1;
 }
 
@@ -7316,7 +7319,7 @@ static void net_state(http_req *req)
         WEB_printf(req, ",\"wan_address\":\"%s\"", SYS_wan_ip ? inet_ntoa(w) : "");
     }
     WEB_printf(req, ",\"networks\":[");
-    for (n = 0; n < 4; n++) {
+    for (n = 0; n < NET_MAX; n++) {
         val[0] = 0; CFG_get_str(net_ssid_ids[n], val);
         WEB_printf(req, "%s{\"id\":%d,\"enabled\":%d,\"ssid\":", n ? "," : "", n + 1, n < count);
         wifi_ui_json(req, val);
@@ -7341,7 +7344,7 @@ static void net_state(http_req *req)
     WEB_printf(req, "]");
 }
 
-/* POST /networks_apply.html: COUNT (1-4); ISOLATE1; for networks 2..COUNT:
+/* POST /networks_apply.html: COUNT (1-7); ISOLATE1; for networks 2..COUNT:
  * SSIDn, SECURITYn (open|wpa2), PASSWORDn (empty keeps a stored WPA2 key),
  * ADDRESSn (IPv4/prefix to route it, router mode only; empty bridges it),
  * INTERNETn (1|0), REACHn (comma list), ISOLATEn (1|0). Saves and restarts. */
@@ -7349,14 +7352,14 @@ void CGI_networks_apply(http_req *req)
 {
     extern int net_extra_parse(const char *s, unsigned long *ip, unsigned long *mask);
     char key[16], *v, auth[256], enc[256], nofw[256], tmp[256], cur[256], countstr[4];
-    char *ssid[4], *sec[4], *pw[4], *addr[4], *inet[4], *reach[4], *iso[4], *via[4];
-    unsigned long ip[4], mask[4];
+    char *ssid[NET_MAX], *sec[NET_MAX], *pw[NET_MAX], *addr[NET_MAX], *inet[NET_MAX], *reach[NET_MAX], *iso[NET_MAX], *via[NET_MAX];
+    unsigned long ip[NET_MAX], mask[NET_MAX];
     int count, n, m, router = wifi_ui_is_router();
     if (req->method != METHOD_POST) { WEB_printf(req,"ERROR: POST required"); return; }
     v = WEB_query(req, "COUNT");
-    if (!v || strlen(v) != 1 || *v < '1' || *v > '4') { WEB_printf(req,"ERROR: COUNT must be 1-4"); return; }
+    if (!v || strlen(v) != 1 || *v < '1' || *v > '0' + NET_MAX) { WEB_printf(req,"ERROR: COUNT must be 1-7"); return; }
     count = *v - '0';
-    for (n = 0; n < 4; n++) {
+    for (n = 0; n < NET_MAX; n++) {
         ip[n] = mask[n] = 0;
         sprintf(key, "ISOLATE%d", n + 1); iso[n] = WEB_query(req, key);
         if (iso[n] && strcmp(iso[n],"0") && strcmp(iso[n],"1")) { WEB_printf(req,"ERROR: ISOLATE%d must be 0 or 1", n + 1); return; }
@@ -7384,7 +7387,7 @@ void CGI_networks_apply(http_req *req)
             if (net_extra_parse(addr[n], &ip[n], &mask[n])) { WEB_printf(req,"ERROR: ADDRESS%d must be IPv4/prefix (8-30), for example 10.0.%d.1/24", n + 1, n + 1); return; }
         }
         if (inet[n] && strcmp(inet[n],"0") && strcmp(inet[n],"1")) { WEB_printf(req,"ERROR: INTERNET%d must be 0 or 1", n + 1); return; }
-        if (reach[n] && !net_reach_ok(reach[n])) { WEB_printf(req,"ERROR: REACH%d: comma list of device, lan, net2, net3, net4, wg", n + 1); return; }
+        if (reach[n] && !net_reach_ok(reach[n])) { WEB_printf(req,"ERROR: REACH%d: comma list of device, lan, net2 ... net7, wg", n + 1); return; }
     }
     /* no overlapping ranges: LAN, routed networks, WireGuard */
     {
@@ -7411,7 +7414,7 @@ void CGI_networks_apply(http_req *req)
     CFG_get_str(CFG_WLN_AuthMode, auth);
     CFG_get_str(CFG_WLN_EncrypType, enc);
     CFG_get_str(CFG_WLN_NoForwarding, nofw);
-    for (n = 0; n < 4; n++) {
+    for (n = 0; n < NET_MAX; n++) {
         if (iso[n]) { net_list_set(tmp, nofw, n, iso[n], "0"); strcpy(nofw, tmp); }
         if (n == 0 || n >= count) continue;
         net_list_set(tmp, auth, n, strcmp(sec[n],"open") ? "WPA2PSK" : "OPEN", "OPEN"); strcpy(auth, tmp);
