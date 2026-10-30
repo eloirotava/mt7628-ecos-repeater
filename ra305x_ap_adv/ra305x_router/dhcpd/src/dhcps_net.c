@@ -213,7 +213,12 @@ static void server_thread(cyg_addrword_t arg)
 	struct dhcpInfo info;
 	int i, fd;
 	(void)arg;
+	unsigned long loops = 0;
+	long last = 0;
 	for (;;) {
+		long t = (long)(cyg_current_time() / 100);
+		loops++;
+		if (t - last >= 30) { diag_printf("dhcps thread: %lu loops, %d nets\n", loops, n_nets); last = t; }
 		cyg_mutex_lock(&lock);
 		for (i = 0; i < n_nets; i++) {
 			struct net *n = &nets[i];
