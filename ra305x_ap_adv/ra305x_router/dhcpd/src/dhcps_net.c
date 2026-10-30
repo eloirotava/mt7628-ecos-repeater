@@ -222,7 +222,10 @@ static void server_thread(cyg_addrword_t arg)
 			if (fd == -1) diag_printf("dhcps %s: dropped (checksum/length)\n", n->ifname);
 			if (fd > 0) {
 				/* reply on the interface the request came in on (raN or the port) */
-				if (DHCPD_ReadPacket(&info, fd) > 0)
+				int rr = DHCPD_ReadPacket(&info, fd);
+				if (rr <= 0) diag_printf("dhcps %s: unreadable request (%d) from %s\n", n->ifname, rr,
+				                         info.rcv_ifp ? ((struct ifnet *)info.rcv_ifp)->if_name : "?");
+				if (rr > 0)
 					handle(n, &info.payload, info.rcv_ifp ? (struct ifnet *)info.rcv_ifp : n->ifp);
 				LIB_rcvinfo_close(fd);
 			}
