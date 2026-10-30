@@ -182,13 +182,15 @@ static void nat_to_bridge(char names[][8], int count)
 		const char *from = k >= 0 ? names[k] : NET_EXTRA_ETH;
 		int num = k >= 0 ? names[k][2] - '0' + 1 : e;
 		const char *out = net_extra_via_wg(num) && ifunit("wg0") ? "wg0" : SYS_lan_if;
-		snprintf(cmd, sizeof cmd, "map %s fromif %s 0/0 -> 0/32 portmap tcp/udp auto\n", out, from);
+		/* rules differing only in fromif count as duplicates: own ranges per source */
+		int plo = 10000 + i * 3500, ilo = 45000 + i * 1400;
+		snprintf(cmd, sizeof cmd, "map %s fromif %s 0/0 -> 0/32 portmap tcp/udp %d:%d\n", out, from, plo, plo + 3499);
 		NAT_setrule(cmd);
-		snprintf(cmd, sizeof cmd, "map %s fromif %s 0/0 -> 0/32 icmpidmap icmp 45000:65535\n", out, from);
+		snprintf(cmd, sizeof cmd, "map %s fromif %s 0/0 -> 0/32 icmpidmap icmp %d:%d\n", out, from, ilo, ilo + 1399);
 		NAT_setrule(cmd);
 		if (strcmp(out, SYS_lan_if)) {
 			/* local traffic to the upstream network still leaves by the bridge */
-			snprintf(cmd, sizeof cmd, "map %s fromif %s 0/0 -> 0/32 portmap tcp/udp auto\n", SYS_lan_if, from);
+			snprintf(cmd, sizeof cmd, "map %s fromif %s 0/0 -> 0/32 portmap tcp/udp %d:%d\n", SYS_lan_if, from, plo, plo + 3499);
 			NAT_setrule(cmd);
 		}
 	}
