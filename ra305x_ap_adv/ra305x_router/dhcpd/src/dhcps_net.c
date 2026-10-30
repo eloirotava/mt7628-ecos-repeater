@@ -187,12 +187,16 @@ static void handle(struct net *n, struct dhcpd *req, struct ifnet *out)
 /* DHCPD_PktCheck with a log line per DHCP packet seen (diagnostics) */
 static int pkt_check(struct ifnet *ifp, char *head, struct mbuf *m, struct eth_input_func *hn)
 {
-	int r = DHCPD_PktCheck(ifp, head, m, hn), i, which = -1;
-	for (i = 0; i < n_nets; i++) {
-		if (nets[i].sock && ((struct pktsocket *)nets[i].sock)->handler == hn) which = i * 2;
-		if (nets[i].sock2 && ((struct pktsocket *)nets[i].sock2)->handler == hn) which = i * 2 + 1;
-	}
-	if (r) diag_printf("dhcps hook %s%d: udp/67 r=%d len=%d socket %d\n", ifp->if_name, ifp->if_unit, r, m->m_pkthdr.len, which);
+	int r, i;
+	/* a request on the Ethernet port goes into its network's own queue; the
+	 * arrival interface travels with it and the reply goes out there */
+	for (i = 0; i < n_nets; i++)
+		if (nets[i].sock2 && nets[i].sock && ((struct pktsocket *)nets[i].sock2)->handler == hn) {
+			hn = ((struct pktsocket *)nets[i].sock)->handler;
+			break;
+		}
+	r = DHCPD_PktCheck(ifp, head, m, hn);
+	if (r) diag_printf("dhcps hook %s%d: udp/67 r=%d len=%d\n", ifp->if_name, ifp->if_unit, r, m->m_pkthdr.len);
 	return r;
 }
 
@@ -217,25 +221,15 @@ static void server_thread(cyg_addrword_t arg)
 			fd = DHCPD_rcv(n->sock, &tv, 0);
 			if (fd == -1) diag_printf("dhcps %s: dropped (checksum/length)\n", n->ifname);
 			if (fd > 0) {
-				if (DHCPD_ReadPacket(&info, fd) > 0) handle(n, &info.payload, n->ifp);
+				/* reply on the interface the request came in on (raN or the port) */
+				if (DHCPD_ReadPacket(&info, fd) > 0)
+					handle(n, &info.payload, info.rcv_ifp ? (struct ifnet *)info.rcv_ifp : n->ifp);
 				LIB_rcvinfo_close(fd);
 			}
-			if (n->ifp2) {
-				if (!n->sock2) {
-					n->sock2 = LIB_pktsocket_create(n->ifname2, pkt_check);
-					diag_printf("dhcps %s: packet socket on %s %s\n", n->ifname, n->ifname2, n->sock2 ? "ready" : "FAILED");
-				}
-				if (!n->sock2) continue;
-				tv.tv_sec = 1;
-				tv.tv_usec = 0;
-				fd = DHCPD_rcv(n->sock2, &tv, 0);
-				if (fd == -1) diag_printf("dhcps %s: dropped from %s (checksum/length)\n", n->ifname, n->ifname2);
-				if (fd > 0) {
-					int rr = DHCPD_ReadPacket(&info, fd);
-					diag_printf("dhcps %s: from %s read %d\n", n->ifname, n->ifname2, rr);
-					if (rr > 0) handle(n, &info.payload, n->ifp2);
-					LIB_rcvinfo_close(fd);
-				}
+			if (n->ifp2 && !n->sock2) {
+				/* only registers the port's hook; its packets land in n->sock */
+				n->sock2 = LIB_pktsocket_create(n->ifname2, pkt_check);
+				diag_printf("dhcps %s: hook on %s %s\n", n->ifname, n->ifname2, n->sock2 ? "ready" : "FAILED");
 			}
 		}
 		cyg_mutex_unlock(&lock);
