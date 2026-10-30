@@ -208,6 +208,13 @@ static unsigned long wg_dns(void)
 
 void net_extra_apply(void)
 {
+#ifndef NET_EXTRA_HOST_TEST
+	{
+		/* frames from the port keep it as their receiving interface (if_ethersubr.c) */
+		extern struct ifnet *net_extra_port;
+		net_extra_port = net_extra_eth_net() ? ifunit(NET_EXTRA_ETH) : 0;
+	}
+#endif
 	char names[NET_EXTRA_MAX][8];
 	int i, count = net_extra_ifnames(names, NET_EXTRA_MAX);
 	for (i = 0; i < count; i++) {

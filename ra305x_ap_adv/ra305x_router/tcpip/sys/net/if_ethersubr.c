@@ -462,6 +462,9 @@ extern int sniffer_debug_level;
  * First we perform any link layer operations, then continue
  * to the upper layers with ether_demux().
  */
+/* set by init/net_extra.c: the Ethernet port while it is in a routed network */
+struct ifnet *net_extra_port;
+
 void
 ether_input(ifp, eh, m)
 	struct ifnet *ifp;
@@ -561,6 +564,12 @@ ether_type = ntohs(eh->ether_type);
 
 recvLocal:
 #endif
+	/* The driver marks every frame as received on eth0 (one device for both
+	 * VLANs) and local bridge frames get the first interface; when the port
+	 * (eth1) belongs to a routed network, keep it as the receiving interface
+	 * so that network's DHCP, firewall rules and NAT see the frame. */
+	if (net_extra_port && ifp == net_extra_port)
+		m->m_pkthdr.rcvif = ifp;
 	/* Continue with upper layer processing */
 	ether_demux(ifp, eh, m);
 }

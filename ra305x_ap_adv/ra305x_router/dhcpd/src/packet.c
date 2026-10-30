@@ -333,7 +333,7 @@ int DHCPD_PktCheck(struct ifnet *ifp, char *head, struct mbuf *m, struct eth_inp
     {
         extern int net_extra_eth_net(void);
         extern struct ifnet *ifunit(const char *name);
-        if (hn && hn->func == DHCPD_PktCheck && net_extra_eth_net() && m->m_pkthdr.rcvif == ifunit("eth1"))
+        if (hn && hn->func == DHCPD_PktCheck && net_extra_eth_net() && (ifp == ifunit("eth1") || m->m_pkthdr.rcvif == ifunit("eth1")))
             return 0;
     }
 
