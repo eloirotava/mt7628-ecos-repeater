@@ -123,6 +123,8 @@ int main(void)
 	net_extra_fw_flushed();
 	net_extra_fw_rules(collect);
 	assert(find("pass out quick on eth1 from any to any keep state\n") >= 0);
+	/* the port is the same network: never blocked from its own range */
+	assert(find("block in quick on eth1 from any to 10.0.2.0/24\n") < 0 && find("block in quick on ra1 from any to 10.0.2.0/24\n") < 0);
 	assert(find("pass out quick on ra1 from any to any keep state\n") >= 0);
 	strcpy(cfg[CFG_SYS_NET2_IP], ""); assert(net_extra_eth_net() == 0);   /* bridged network: no */
 	strcpy(cfg[CFG_SYS_NET2_IP], "10.0.2.1/24");

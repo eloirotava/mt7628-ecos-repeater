@@ -352,14 +352,14 @@ void net_extra_fw_rules(void (*set)(char *))
 			rule(set, "block in quick on %s from any to %s/%d\n", x, rescue, 32);
 			if (wg_ip) rule(set, "block in quick on %s from any to %s/%d\n", x, wg_ip, 32);
 			for (j = 0; j < count; j++)
-				if (j != i) rule(set, "block in quick on %s from any to %s/%d\n", x, ip[j], 32);
+				if (num[j] != num[i]) rule(set, "block in quick on %s from any to %s/%d\n", x, ip[j], 32);
 		}
 		if (!has(reach[i], "lan"))
 			rule(set, "block in quick on %s from any to %s/%d\n", x, SYS_lan_ip & SYS_lan_mask, prefix(SYS_lan_mask));
 		for (j = 0; j < count; j++) {
 			char key[8];
 			snprintf(key, sizeof key, "net%d", num[j]);
-			if (j != i && !has(reach[i], key))
+			if (num[j] != num[i] && !has(reach[i], key))
 				rule(set, "block in quick on %s from any to %s/%d\n", x, ip[j] & mask[j], prefix(mask[j]));
 		}
 		if (wg_ip && !has(reach[i], "wg"))
@@ -372,7 +372,7 @@ void net_extra_fw_rules(void (*set)(char *))
 			for (j = 0; j < count; j++) {
 				char key[8];
 				snprintf(key, sizeof key, "net%d", num[j]);
-				if (j != i && has(reach[i], key))
+				if (num[j] != num[i] && has(reach[i], key))
 					rule(set, "pass in quick on %s from any to %s/%d\n", x, ip[j] & mask[j], prefix(mask[j]));
 			}
 			snprintf(buf, sizeof buf, "pass in quick on %s to wg0 from any to any\n", x);
@@ -386,7 +386,7 @@ void net_extra_fw_rules(void (*set)(char *))
 			for (j = 0; j < count; j++) {
 				char key[8];
 				snprintf(key, sizeof key, "net%d", num[j]);
-				if (j != i && has(reach[i], key))
+				if (num[j] != num[i] && has(reach[i], key))
 					rule(set, "pass in quick on %s from any to %s/%d\n", x, ip[j] & mask[j], prefix(mask[j]));
 			}
 			snprintf(buf, sizeof buf, "block in quick on %s all\n", x);
