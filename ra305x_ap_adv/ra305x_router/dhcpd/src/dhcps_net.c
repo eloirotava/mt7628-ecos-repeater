@@ -188,16 +188,22 @@ static void handle(struct net *n, struct dhcpd *req, struct ifnet *out)
 /* DHCPD_PktCheck with a log line per DHCP packet seen (diagnostics) */
 static int pkt_check(struct ifnet *ifp, char *head, struct mbuf *m, struct eth_input_func *hn)
 {
-	int r, i;
+	int r, i, moved = -1, q = -1;
+	struct eth_input_func *orig = hn;
 	/* a request on the Ethernet port goes into its network's own queue; the
 	 * arrival interface travels with it and the reply goes out there */
 	for (i = 0; i < n_nets; i++)
 		if (nets[i].sock2 && nets[i].sock && ((struct pktsocket *)nets[i].sock2)->handler == hn) {
 			hn = ((struct pktsocket *)nets[i].sock)->handler;
+			moved = i;
 			break;
 		}
 	r = DHCPD_PktCheck(ifp, head, m, hn);
-	if (r) diag_printf("dhcps hook %s%d: udp/67 r=%d len=%d\n", ifp->if_name, ifp->if_unit, r, m->m_pkthdr.len);
+	for (i = 0; i < n_nets; i++) {
+		if (nets[i].sock && ((struct pktsocket *)nets[i].sock)->handler == hn) q = 2 * i;
+		if (nets[i].sock2 && ((struct pktsocket *)nets[i].sock2)->handler == hn) q = 2 * i + 1;
+	}
+	if (r) diag_printf("dhcps hook %s%d: udp/67 r=%d len=%d moved %d queue %d (hn %p -> %p)\n", ifp->if_name, ifp->if_unit, r, m->m_pkthdr.len, moved, q, orig, hn);
 	return r;
 }
 
