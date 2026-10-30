@@ -225,6 +225,7 @@ static void server_thread(cyg_addrword_t arg)
 				tv.tv_sec = 1;
 				tv.tv_usec = 0;
 				fd = DHCPD_rcv(n->sock2, &tv, 0);
+				if (fd == -1) diag_printf("dhcps %s: dropped from %s (checksum/length)\n", n->ifname, n->ifname2);
 				if (fd > 0) {
 					if (DHCPD_ReadPacket(&info, fd) > 0) handle(n, &info.payload, n->ifp2);
 					LIB_rcvinfo_close(fd);
