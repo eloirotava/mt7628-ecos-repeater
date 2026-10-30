@@ -1564,6 +1564,7 @@ static int ra305x_init(void)
 }
 
 #ifdef CONFIG_IPTV //iptv support ,add by ziqiang.yu
+extern int net_extra_eth_net(void);
 static int iptv_portmask(void)
 {
 
@@ -1639,7 +1640,10 @@ static int ra305x_addifp(int unit, if_ra305x_t *pifra305x)
 	}
 	else 
 #endif
-	if (opmode ==3 || opmode ==2)//set LAN and WAN to one VLAN
+	/* Bridged modes put every port on the LAN (eth0). With the port assigned
+	 * to a routed network (init/net_extra.c) it stays on eth1, which is
+	 * bridged with that network instead. */
+	if ((opmode ==3 || opmode ==2) && !net_extra_eth_net())//set LAN and WAN to one VLAN
 	{
 		if (pifra305x->init_portmask == CONFIG_RA305X_LAN_PORTMASK)
 		{
