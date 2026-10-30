@@ -155,8 +155,9 @@ static void handle(struct net *n, struct dhcpd *req, struct ifnet *out)
 	unsigned char type = 0;
 	unsigned long want = 0, server = 0;
 	struct lease *l;
+	diag_printf("dhcps %s: request op %d hlen %d\n", n->ifname, req->op, req->hlen);
 	if (req->op != BOOTREQUEST || req->hlen != 6) return;
-	if (!dhcpd_pickup_opt(req, DHCP_MESSAGE_TYPE, sizeof type, &type)) return;
+	if (!dhcpd_pickup_opt(req, DHCP_MESSAGE_TYPE, sizeof type, &type)) { diag_printf("dhcps %s: no message type\n", n->ifname); return; }
 	diag_printf("dhcps %s: got type %d from %02x:%02x:%02x:%02x:%02x:%02x\n", n->ifname, type, req->chaddr[0], req->chaddr[1], req->chaddr[2], req->chaddr[3], req->chaddr[4], req->chaddr[5]);
 	dhcpd_pickup_opt(req, DHCP_REQUESTED_IP, sizeof want, &want);
 	dhcpd_pickup_opt(req, DHCP_SERVER_ID, sizeof server, &server);
@@ -223,6 +224,7 @@ static void server_thread(cyg_addrword_t arg)
 			if (fd > 0) {
 				/* reply on the interface the request came in on (raN or the port) */
 				int rr = DHCPD_ReadPacket(&info, fd);
+				diag_printf("dhcps %s: dequeued %d bytes from %s\n", n->ifname, rr, info.rcv_ifp ? ((struct ifnet *)info.rcv_ifp)->if_name : "?");
 				if (rr <= 0) diag_printf("dhcps %s: unreadable request (%d) from %s\n", n->ifname, rr,
 				                         info.rcv_ifp ? ((struct ifnet *)info.rcv_ifp)->if_name : "?");
 				if (rr > 0)
