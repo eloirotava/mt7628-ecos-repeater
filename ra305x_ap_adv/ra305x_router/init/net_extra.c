@@ -22,6 +22,7 @@
 extern int CFG_get_str(int id, char *val);
 extern cyg_bool_t netif_alias_cfg(const char *intf, struct ip_set *setp);
 extern int DHCPS_net_start(const char *ifname, unsigned long ip, unsigned long mask, unsigned long dns);
+extern int DHCPS_net_add_port(const char *ifname, const char *port);
 extern void FW_setrule(char *cmdbuf);
 
 static const int ip_ids[NET_EXTRA_MAX] = { CFG_SYS_NET1_IP, CFG_SYS_NET2_IP, CFG_SYS_NET3_IP, CFG_SYS_NET4_IP, CFG_SYS_NET5_IP, CFG_SYS_NET6_IP, CFG_SYS_NET7_IP };
@@ -67,6 +68,24 @@ int net_extra_bridge_base(void)
 	return atoi(val) == 3;
 }
 
+/* Network (2..7) the Ethernet port belongs to, 0 if none: only with a
+ * Wi-Fi uplink (opmode 2 or 3: the port is free) and a routed network that
+ * is active. The port and raN then form a bridge cluster of their own. */
+int net_extra_eth_net(void)
+{
+	char val[8];
+	int n, op, apcli, bss;
+	val[0] = 0;
+	CFG_get_str(CFG_SYS_ETH_NET, val);
+	n = atoi(val);
+	if (n < 2 || n > NET_EXTRA_MAX) return 0;
+	val[0] = 0; CFG_get_str(CFG_SYS_OPMODE, val); op = atoi(val);
+	val[0] = 0; CFG_get_str(CFG_WLN_ApCliEnable, val); apcli = atoi(val);
+	val[0] = 0; CFG_get_str(CFG_WLN_BssidNum, val); bss = atoi(val);
+	if ((op != 2 && op != 3) || !apcli || n > bss) return 0;
+	return net_extra_routed(n, 0, 0) ? n : 0;
+}
+
 /* Network n (1..7) routed? Fills ip/mask when given. Network 1 is routed
  * here only in bridge-based setups; otherwise it is the LAN. */
 int net_extra_routed(int n, unsigned long *ip, unsigned long *mask)
@@ -107,7 +126,7 @@ int net_extra_ifnames(char names[][8], int max)
  * route (route-to is compiled out of this IPFilter). */
 extern u_long (*ip_policy_nexthop)(struct mbuf *);
 extern struct ifnet *ifunit(const char *name);
-static struct ifnet *wg_src_ifp[NET_EXTRA_MAX];
+static struct ifnet *wg_src_ifp[NET_EXTRA_MAX], *wg_src_eth;
 static u_long wg_nexthop;
 
 static u_long policy_nexthop(struct mbuf *m)
@@ -116,6 +135,8 @@ static u_long policy_nexthop(struct mbuf *m)
 	for (i = 0; i < NET_EXTRA_MAX; i++)
 		if (wg_src_ifp[i] && m->m_pkthdr.rcvif == wg_src_ifp[i])
 			return wg_nexthop;
+	if (wg_src_eth && m->m_pkthdr.rcvif == wg_src_eth)
+		return wg_nexthop;
 	return 0;
 }
 
@@ -133,6 +154,12 @@ static void policy_setup(char names[][8], int count)
 	for (i = 0; i < count && i < NET_EXTRA_MAX; i++)
 		if (net_extra_via_wg(names[i][2] - '0' + 1) && (wg_src_ifp[i] = ifunit(names[i])))
 			any = 1;
+	/* the Ethernet port of a network sent through the tunnel */
+	{
+		int e = net_extra_eth_net();
+		wg_src_eth = e && net_extra_via_wg(e) ? ifunit(NET_EXTRA_ETH) : 0;
+		if (wg_src_eth) any = 1;
+	}
 	wg_nexthop = nh;
 	if (any) ip_policy_nexthop = policy_nexthop;
 }
@@ -148,15 +175,22 @@ static void nat_to_bridge(char names[][8], int count)
 {
 	char cmd[160];
 	int i;
-	for (i = 0; i < count; i++) {
-		const char *out = net_extra_via_wg(names[i][2] - '0' + 1) && ifunit("wg0") ? "wg0" : SYS_lan_if;
-		snprintf(cmd, sizeof cmd, "map %s fromif %s 0/0 -> 0/32 portmap tcp/udp auto\n", out, names[i]);
+	int e = net_extra_eth_net();
+	for (i = 0; i < count + (e ? 1 : 0); i++) {
+		/* the extra round is the Ethernet port of network e */
+		int k = i < count ? i : -1;
+		const char *from = k >= 0 ? names[k] : NET_EXTRA_ETH;
+		int num = k >= 0 ? names[k][2] - '0' + 1 : e;
+		const char *out = net_extra_via_wg(num) && ifunit("wg0") ? "wg0" : SYS_lan_if;
+		/* rules differing only in fromif count as duplicates: own ranges per source */
+		int plo = 10000 + i * 3500, ilo = 45000 + i * 1400;
+		snprintf(cmd, sizeof cmd, "map %s fromif %s 0/0 -> 0/32 portmap tcp/udp %d:%d\n", out, from, plo, plo + 3499);
 		NAT_setrule(cmd);
-		snprintf(cmd, sizeof cmd, "map %s fromif %s 0/0 -> 0/32 icmpidmap icmp 45000:65535\n", out, names[i]);
+		snprintf(cmd, sizeof cmd, "map %s fromif %s 0/0 -> 0/32 icmpidmap icmp %d:%d\n", out, from, ilo, ilo + 1399);
 		NAT_setrule(cmd);
 		if (strcmp(out, SYS_lan_if)) {
 			/* local traffic to the upstream network still leaves by the bridge */
-			snprintf(cmd, sizeof cmd, "map %s fromif %s 0/0 -> 0/32 portmap tcp/udp auto\n", SYS_lan_if, names[i]);
+			snprintf(cmd, sizeof cmd, "map %s fromif %s 0/0 -> 0/32 portmap tcp/udp %d:%d\n", SYS_lan_if, from, plo, plo + 3499);
 			NAT_setrule(cmd);
 		}
 	}
@@ -176,6 +210,13 @@ static unsigned long wg_dns(void)
 
 void net_extra_apply(void)
 {
+#ifndef NET_EXTRA_HOST_TEST
+	{
+		/* frames from the port keep it as their receiving interface (if_ethersubr.c) */
+		extern struct ifnet *net_extra_port;
+		net_extra_port = net_extra_eth_net() ? ifunit(NET_EXTRA_ETH) : 0;
+	}
+#endif
 	char names[NET_EXTRA_MAX][8];
 	int i, count = net_extra_ifnames(names, NET_EXTRA_MAX);
 	for (i = 0; i < count; i++) {
@@ -190,6 +231,8 @@ void net_extra_apply(void)
 		 * NAT); through the tunnel the home router's DNS is not reachable, so
 		 * those networks get SYS_WG_DNS (default 1.1.1.1) */
 		DHCPS_net_start(names[i], ip, mask, net_extra_via_wg(names[i][2] - '0' + 1) ? wg_dns() : 0);
+		if (net_extra_eth_net() == names[i][2] - '0' + 1)
+			DHCPS_net_add_port(names[i], NET_EXTRA_ETH);
 	}
 	/* Wi-Fi is up: isolation rules may be loaded now (no-op if the
 	 * firewall already has them); later firewall reloads add them again. */
@@ -289,6 +332,18 @@ void net_extra_fw_rules(void (*set)(char *))
 		if (!net_extra_routed(1, 0, 0) && has(reach[i], "net1") && !has(reach[i], "lan") && strlen(reach[i]) + 5 < sizeof reach[i])
 			strcat(reach[i], reach[i][0] ? ",lan" : "lan");
 	if (count) diag_printf("net: isolation rules for %d routed network(s)\n", count);
+	{
+		/* the Ethernet port in a routed network gets that network's rules */
+		int e = net_extra_eth_net();
+		for (i = 0; i < count && count < NET_EXTRA_MAX; i++)
+			if (num[i] == e) {
+				strcpy(names[count], NET_EXTRA_ETH);
+				num[count] = num[i]; ip[count] = ip[i]; mask[count] = mask[i];
+				strcpy(reach[count], reach[i]); internet[count] = internet[i]; via_wg[count] = via_wg[i];
+				count++;
+				break;
+			}
+	}
 	for (i = 0; i < count; i++) {
 		const char *x = names[i];
 		snprintf(buf, sizeof buf, "pass out quick on %s from any to any keep state\n", x);
@@ -299,14 +354,14 @@ void net_extra_fw_rules(void (*set)(char *))
 			rule(set, "block in quick on %s from any to %s/%d\n", x, rescue, 32);
 			if (wg_ip) rule(set, "block in quick on %s from any to %s/%d\n", x, wg_ip, 32);
 			for (j = 0; j < count; j++)
-				if (j != i) rule(set, "block in quick on %s from any to %s/%d\n", x, ip[j], 32);
+				if (num[j] != num[i]) rule(set, "block in quick on %s from any to %s/%d\n", x, ip[j], 32);
 		}
 		if (!has(reach[i], "lan"))
 			rule(set, "block in quick on %s from any to %s/%d\n", x, SYS_lan_ip & SYS_lan_mask, prefix(SYS_lan_mask));
 		for (j = 0; j < count; j++) {
 			char key[8];
 			snprintf(key, sizeof key, "net%d", num[j]);
-			if (j != i && !has(reach[i], key))
+			if (num[j] != num[i] && !has(reach[i], key))
 				rule(set, "block in quick on %s from any to %s/%d\n", x, ip[j] & mask[j], prefix(mask[j]));
 		}
 		if (wg_ip && !has(reach[i], "wg"))
@@ -319,7 +374,7 @@ void net_extra_fw_rules(void (*set)(char *))
 			for (j = 0; j < count; j++) {
 				char key[8];
 				snprintf(key, sizeof key, "net%d", num[j]);
-				if (j != i && has(reach[i], key))
+				if (num[j] != num[i] && has(reach[i], key))
 					rule(set, "pass in quick on %s from any to %s/%d\n", x, ip[j] & mask[j], prefix(mask[j]));
 			}
 			snprintf(buf, sizeof buf, "pass in quick on %s to wg0 from any to any\n", x);
@@ -333,7 +388,7 @@ void net_extra_fw_rules(void (*set)(char *))
 			for (j = 0; j < count; j++) {
 				char key[8];
 				snprintf(key, sizeof key, "net%d", num[j]);
-				if (j != i && has(reach[i], key))
+				if (num[j] != num[i] && has(reach[i], key))
 					rule(set, "pass in quick on %s from any to %s/%d\n", x, ip[j] & mask[j], prefix(mask[j]));
 			}
 			snprintf(buf, sizeof buf, "block in quick on %s all\n", x);

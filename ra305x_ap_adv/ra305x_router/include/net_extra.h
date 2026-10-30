@@ -14,5 +14,7 @@ void net_extra_fw_flushed(void);
 int net_extra_via_wg(int n);
 int net_extra_bridge_base(void);
 void net_extra_lan_changed(void);
+int net_extra_eth_net(void);
+#define NET_EXTRA_ETH "eth1" /* the physical Ethernet port (all switch ports) */
 
 #endif

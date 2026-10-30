@@ -98,7 +98,10 @@ void interface_config(void)
 	
 #ifdef CONFIG_BRIDGE
 	sprintf(bridge_cfg, "%s ", line);
-	if ((opmode == 2) || (opmode == 3))
+	extern int net_extra_eth_net(void);
+	/* with the Ethernet port in a routed network it is bridged with that
+	 * network's raN instead (cluster N, init/lan_start.c) */
+	if (((opmode == 2) || (opmode == 3)) && !net_extra_eth_net())
 	{
 		i = strlen(bridge_cfg);
 		if(i > 100)

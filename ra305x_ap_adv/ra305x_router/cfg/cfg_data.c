@@ -206,6 +206,7 @@ struct cfgid_str_t cfgid_str_table[]=
     CFG_STR_ENTRY_( SYS_NET6_SCHED ),
     CFG_STR_ENTRY_( SYS_NET7_SCHED ),
     CFG_STR_ENTRY_( SYS_TZ_OFFSET ),
+    CFG_STR_ENTRY_( SYS_ETH_NET ),
     CFG_STR_ENTRY_( SYS_WG_EN ),
     CFG_STR_ENTRY_( SYS_WG_KEY ),
     CFG_STR_ENTRY_( SYS_WG_ADDR ),

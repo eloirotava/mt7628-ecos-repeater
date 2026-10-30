@@ -7442,8 +7442,14 @@ static void net_state(http_req *req)
         int op;
         val[0] = 0; CFG_get_str(CFG_SYS_OPMODE, val); op = atoi(val);
         val[0] = 0; CFG_get_str(CFG_WLN_ApCliEnable, val);
-        WEB_printf(req, ",\"uplink_type\":\"%s\",\"ethernet\":\"%s\"", atoi(val) ? "wifi" : "cable",
-                   op == 1 ? "wan" : op == 2 ? "net1" : "internet");
+        {
+            extern int net_extra_eth_net(void);
+            int e = net_extra_eth_net();
+            char en[8];
+            sprintf(en, "net%d", e);
+            WEB_printf(req, ",\"uplink_type\":\"%s\",\"ethernet\":\"%s\"", atoi(val) ? "wifi" : "cable",
+                       op == 1 ? "wan" : e ? en : op == 2 ? "net1" : "internet");
+        }
     }
     {
         /* layout: nat (every active network NAT), bridge (all bridged) or mixed */
@@ -7623,7 +7629,8 @@ void CGI_setup_apply(http_req *req)
     unsigned long ip[NET_MAX], mask[NET_MAX];
     char auth[256], enc[256], nofw[256], tmp[256], cur[256], curup[64], curupkey[80], countstr[4];
     char lanip[20], lanmask[20], dstart[20], dend[20];
-    int count, n, m, wifi, nat[NET_MAX], bridged = 0, ch;
+    int count, n, m, wifi, nat[NET_MAX], bridged = 0, ch, eth_net = 0;
+    char eth_str[4];
     struct setup_old { int id; char old[256]; } *olds;
     int nold = 0;
     if (req->method != METHOD_POST) { WEB_printf(req,"ERROR: POST required"); return; }
@@ -7648,7 +7655,7 @@ void CGI_setup_apply(http_req *req)
         }
         if (strcmp(upsec,"open") && !wifi_ui_key(upkey)) { WEB_printf(req,"ERROR: UPLINK_PASSWORD must be 8-63 ASCII characters"); return; }
         if (bssid && *bssid && !wifi_ui_mac(bssid)) { WEB_printf(req,"ERROR: UPLINK_BSSID must be aa:bb:cc:dd:ee:ff or empty"); return; }
-        if (eth && strcmp(eth,"net1") && strcmp(eth,"internet")) { WEB_printf(req,"ERROR: ETHERNET must be net1 or internet"); return; }
+        if (eth && strcmp(eth,"internet") && !(eth[0] == 'n' && eth[1] == 'e' && eth[2] == 't' && eth[3] >= '1' && eth[3] <= '0' + NET_MAX && !eth[4])) { WEB_printf(req,"ERROR: ETHERNET must be net1 ... net7 or internet"); return; }
         if (eth && !strcmp(eth,"internet")) bridged = 1;
     }
     if (dhcp1 && strcmp(dhcp1,"0") && strcmp(dhcp1,"1")) { WEB_printf(req,"ERROR: DHCP1 must be 0 or 1"); return; }
@@ -7694,6 +7701,9 @@ void CGI_setup_apply(http_req *req)
         if (iso[n] && strcmp(iso[n],"0") && strcmp(iso[n],"1")) { WEB_printf(req,"ERROR: ISOLATE%d must be 0 or 1", n + 1); return; }
     }
     if (wifi && eth && !strcmp(eth,"net1") && bridged) { WEB_printf(req,"ERROR: ETHERNET=net1 needs network 1 as NAT and no bridged network; use ETHERNET=internet"); return; }
+    /* the port in network 2..7: that network must be active and NAT */
+    eth_net = wifi && eth && eth[3] >= '2' && eth[0] == 'n' ? eth[3] - '0' : 0;
+    if (eth_net && (eth_net > count || !nat[eth_net - 1])) { WEB_printf(req,"ERROR: ETHERNET=net%d needs network %d active and TYPE%d=nat", eth_net, eth_net, eth_net); return; }
     /* no overlapping ranges among NAT networks and WireGuard */
     {
         unsigned long wip = 0, wmask = 0;
@@ -7741,6 +7751,9 @@ void CGI_setup_apply(http_req *req)
         SET(CFG_SYS_NET1_IP, nat[0] ? addr[0] : "");
     }
     SET(CFG_WLN_ApCliEnable, wifi ? "1" : "0");
+    eth_str[0] = 0;
+    if (eth_net) sprintf(eth_str, "%d", eth_net);
+    SET(CFG_SYS_ETH_NET, eth_str);
     /* bridged clients behind a Wi-Fi uplink need the driver's MAC repeater */
     SET(CFG_WLN_MACRepeaterEn, wifi && bridged ? "1" : "0");
     if (wifi) {

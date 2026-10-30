@@ -326,6 +326,17 @@ int DHCPD_PktCheck(struct ifnet *ifp, char *head, struct mbuf *m, struct eth_inp
     struct udphdr *udp;
     struct ip *ip;
 
+    /* The Ethernet port in a routed network (init/net_extra.c) belongs to
+     * that network's DHCP (dhcps_net.c), not to the LAN server: leave its
+     * requests to the next hook. The routed network's own hook also calls
+     * this function, so only the LAN server's entry is skipped. */
+    {
+        extern int net_extra_eth_net(void);
+        extern struct ifnet *ifunit(const char *name);
+        if (hn && hn->func == DHCPD_PktCheck && net_extra_eth_net() && (ifp == ifunit("eth1") || m->m_pkthdr.rcvif == ifunit("eth1")))
+            return 0;
+    }
+
     if(m->m_pkthdr.len < 40)
         return 0;
 

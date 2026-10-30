@@ -708,20 +708,33 @@ static void napt_init(void)
 			int k, count = net_extra_ifnames(names, 7);
 			extern int net_extra_via_wg(int n);
 			extern struct ifnet *ifunit(const char *name);
+			extern int net_extra_eth_net(void);
+			int eth = net_extra_eth_net(), q;
 			for (k = 0; k < count; k++) {
-				sprintf(naptcmd, "map %s fromif %s 0/0 -> 0/32 portmap tcp/udp auto\n",
-					primary_wan_ip_set[j].ifname, names[k]);
-				NAT_setrule(naptcmd);
-				sprintf(naptcmd, "map %s fromif %s 0/0 -> 0/32 icmpidmap icmp 45000:65535\n",
-					primary_wan_ip_set[j].ifname, names[k]);
-				NAT_setrule(naptcmd);
-				/* networks sent through the tunnel: NAT to the wg0 address,
-				 * the only source the WireGuard server accepts from us */
-				if (net_extra_via_wg(names[k][2] - '0' + 1) && ifunit("wg0")) {
-					sprintf(naptcmd, "map wg0 fromif %s 0/0 -> 0/32 portmap tcp/udp auto\n", names[k]);
+				/* the network's raN and, when it is part of it, the Ethernet port */
+				int num = names[k][2] - '0' + 1;
+				const char *src[2];
+				src[0] = names[k];
+				src[1] = eth == num ? "eth1" : 0;
+				for (q = 0; q < 2 && src[q]; q++) {
+					/* IPFilter compares map rules without their fromif, so
+					 * rules that differ only there are refused as duplicates:
+					 * each source gets port and ICMP id ranges of its own */
+					int idx = k * 2 + q, plo = 10000 + idx * 3500, ilo = 45000 + idx * 1400;
+					sprintf(naptcmd, "map %s fromif %s 0/0 -> 0/32 portmap tcp/udp %d:%d\n",
+						primary_wan_ip_set[j].ifname, src[q], plo, plo + 3499);
 					NAT_setrule(naptcmd);
-					sprintf(naptcmd, "map wg0 fromif %s 0/0 -> 0/32 icmpidmap icmp 45000:65535\n", names[k]);
+					sprintf(naptcmd, "map %s fromif %s 0/0 -> 0/32 icmpidmap icmp %d:%d\n",
+						primary_wan_ip_set[j].ifname, src[q], ilo, ilo + 1399);
 					NAT_setrule(naptcmd);
+					/* networks sent through the tunnel: NAT to the wg0 address,
+					 * the only source the WireGuard server accepts from us */
+					if (net_extra_via_wg(num) && ifunit("wg0")) {
+						sprintf(naptcmd, "map wg0 fromif %s 0/0 -> 0/32 portmap tcp/udp %d:%d\n", src[q], plo, plo + 3499);
+						NAT_setrule(naptcmd);
+						sprintf(naptcmd, "map wg0 fromif %s 0/0 -> 0/32 icmpidmap icmp %d:%d\n", src[q], ilo, ilo + 1399);
+						NAT_setrule(naptcmd);
+					}
 				}
 			}
 		}

@@ -518,9 +518,13 @@ int Wireless_start()
         sprintf(ifName, "ra%d", i);
         result = netif_up(ifName);
 #ifdef CONFIG_BRIDGE
-	/* routed extra networks (net_extra.c) stay out of the LAN bridge */
+	/* routed extra networks (net_extra.c) stay out of the LAN bridge; the
+	 * one the Ethernet port belongs to forms its own cluster with the port */
 	if (result && !net_extra_routed(i + 1, 0, 0)) {
 		sprintf(temp_cfg, "%s, ra%d", bridge_cfg, i);
+		sprintf(bridge_cfg, "%s", temp_cfg);
+	} else if (result && net_extra_eth_net() == i + 1) {
+		sprintf(temp_cfg, "%s, ra%d:%d, %s:%d", bridge_cfg, i, i + 1, NET_EXTRA_ETH, i + 1);
 		sprintf(bridge_cfg, "%s", temp_cfg);
 	}
 #endif
