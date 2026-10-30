@@ -313,16 +313,6 @@ inline int LIB_ether_input_func(struct ifnet *ifp, char *head, struct mbuf *m, i
 	else
 		entry = eth_input_host_funclist;
 	s = splimp();
-	{
-		/* diagnostics: which interfaces a DHCP request is seen on */
-		struct ip *ip = mtod(m, struct ip *);
-		if (flag != FORWARDQ && m->m_pkthdr.len >= 28 && ip->ip_v == 4 && ip->ip_p == 17) {
-			unsigned char *u = (unsigned char *)ip + (ip->ip_hl << 2);
-			if (u[2] == 0 && u[3] == 67)
-				diag_printf("dhcp in: ifp %s%d rcvif %s%d\n", ifp->if_name, ifp->if_unit,
-				            m->m_pkthdr.rcvif ? m->m_pkthdr.rcvif->if_name : "-", m->m_pkthdr.rcvif ? m->m_pkthdr.rcvif->if_unit : -1);
-		}
-	}
 	while(entry)
 	{
 		if((entry->ifp == m->m_pkthdr.rcvif) && (rc = entry->func(ifp, head, m, entry))){

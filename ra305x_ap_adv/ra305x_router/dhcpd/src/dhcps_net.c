@@ -155,9 +155,8 @@ static void handle(struct net *n, struct dhcpd *req, struct ifnet *out)
 	unsigned char type = 0;
 	unsigned long want = 0, server = 0;
 	struct lease *l;
-	diag_printf("dhcps %s: request op %d hlen %d\n", n->ifname, req->op, req->hlen);
 	if (req->op != BOOTREQUEST || req->hlen != 6) return;
-	if (!dhcpd_pickup_opt(req, DHCP_MESSAGE_TYPE, sizeof type, &type)) { diag_printf("dhcps %s: no message type\n", n->ifname); return; }
+	if (!dhcpd_pickup_opt(req, DHCP_MESSAGE_TYPE, sizeof type, &type)) return;
 	diag_printf("dhcps %s: got type %d from %02x:%02x:%02x:%02x:%02x:%02x\n", n->ifname, type, req->chaddr[0], req->chaddr[1], req->chaddr[2], req->chaddr[3], req->chaddr[4], req->chaddr[5]);
 	dhcpd_pickup_opt(req, DHCP_REQUESTED_IP, sizeof want, &want);
 	dhcpd_pickup_opt(req, DHCP_SERVER_ID, sizeof server, &server);
@@ -188,22 +187,15 @@ static void handle(struct net *n, struct dhcpd *req, struct ifnet *out)
 /* DHCPD_PktCheck with a log line per DHCP packet seen (diagnostics) */
 static int pkt_check(struct ifnet *ifp, char *head, struct mbuf *m, struct eth_input_func *hn)
 {
-	int r, i, moved = -1, q = -1;
-	struct eth_input_func *orig = hn;
+	int r, i;
 	/* a request on the Ethernet port goes into its network's own queue; the
 	 * arrival interface travels with it and the reply goes out there */
 	for (i = 0; i < n_nets; i++)
 		if (nets[i].sock2 && nets[i].sock && ((struct pktsocket *)nets[i].sock2)->handler == hn) {
 			hn = ((struct pktsocket *)nets[i].sock)->handler;
-			moved = i;
 			break;
 		}
 	r = DHCPD_PktCheck(ifp, head, m, hn);
-	for (i = 0; i < n_nets; i++) {
-		if (nets[i].sock && ((struct pktsocket *)nets[i].sock)->handler == hn) q = 2 * i;
-		if (nets[i].sock2 && ((struct pktsocket *)nets[i].sock2)->handler == hn) q = 2 * i + 1;
-	}
-	if (r) diag_printf("dhcps hook %s%d: udp/67 r=%d len=%d moved %d queue %d (hn %p -> %p)\n", ifp->if_name, ifp->if_unit, r, m->m_pkthdr.len, moved, q, orig, hn);
 	return r;
 }
 
@@ -213,12 +205,7 @@ static void server_thread(cyg_addrword_t arg)
 	struct dhcpInfo info;
 	int i, fd;
 	(void)arg;
-	unsigned long loops = 0;
-	long last = 0;
 	for (;;) {
-		long t = (long)(cyg_current_time() / 100);
-		loops++;
-		if (t - last >= 30) { diag_printf("dhcps thread: %lu loops, %d nets\n", loops, n_nets); last = t; }
 		cyg_mutex_lock(&lock);
 		for (i = 0; i < n_nets; i++) {
 			struct net *n = &nets[i];
@@ -232,13 +219,11 @@ static void server_thread(cyg_addrword_t arg)
 			tv.tv_usec = 0;
 			fd = DHCPD_rcv(n->sock, &tv, 0);
 			if (fd == -1) diag_printf("dhcps %s: dropped (checksum/length)\n", n->ifname);
-			if (fd > 0) {
+			/* fd is a pointer (0x80... on this SoC, negative as an int): only 0
+			 * (nothing) and -1 (dropped) mean no packet */
+			if (fd != 0 && fd != -1) {
 				/* reply on the interface the request came in on (raN or the port) */
-				int rr = DHCPD_ReadPacket(&info, fd);
-				diag_printf("dhcps %s: dequeued %d bytes from %s\n", n->ifname, rr, info.rcv_ifp ? ((struct ifnet *)info.rcv_ifp)->if_name : "?");
-				if (rr <= 0) diag_printf("dhcps %s: unreadable request (%d) from %s\n", n->ifname, rr,
-				                         info.rcv_ifp ? ((struct ifnet *)info.rcv_ifp)->if_name : "?");
-				if (rr > 0)
+				if (DHCPD_ReadPacket(&info, fd) > 0)
 					handle(n, &info.payload, info.rcv_ifp ? (struct ifnet *)info.rcv_ifp : n->ifp);
 				LIB_rcvinfo_close(fd);
 			}
