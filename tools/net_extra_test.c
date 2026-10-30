@@ -8,7 +8,7 @@
 #define diag_printf printf
 
 enum { CFG_SYS_NET2_IP = 1, CFG_SYS_NET3_IP, CFG_SYS_NET4_IP, CFG_SYS_NET2_REACH, CFG_SYS_NET3_REACH, CFG_SYS_NET4_REACH,
-       CFG_SYS_NET2_INTERNET, CFG_SYS_NET3_INTERNET, CFG_SYS_NET4_INTERNET, CFG_SYS_NET2_VIA, CFG_SYS_NET3_VIA, CFG_SYS_NET4_VIA, CFG_SYS_NET5_IP, CFG_SYS_NET6_IP, CFG_SYS_NET7_IP, CFG_SYS_NET5_REACH, CFG_SYS_NET6_REACH, CFG_SYS_NET7_REACH, CFG_SYS_NET5_INTERNET, CFG_SYS_NET6_INTERNET, CFG_SYS_NET7_INTERNET, CFG_SYS_NET5_VIA, CFG_SYS_NET6_VIA, CFG_SYS_NET7_VIA, CFG_SYS_NET1_IP, CFG_SYS_NET1_REACH, CFG_SYS_NET1_INTERNET, CFG_SYS_NET1_VIA, CFG_SYS_OPMODE, CFG_SYS_WG_DNS, CFG_WLN_BssidNum, CFG_SYS_WG_ADDR, CFG_MAX };
+       CFG_SYS_NET2_INTERNET, CFG_SYS_NET3_INTERNET, CFG_SYS_NET4_INTERNET, CFG_SYS_NET2_VIA, CFG_SYS_NET3_VIA, CFG_SYS_NET4_VIA, CFG_SYS_NET5_IP, CFG_SYS_NET6_IP, CFG_SYS_NET7_IP, CFG_SYS_NET5_REACH, CFG_SYS_NET6_REACH, CFG_SYS_NET7_REACH, CFG_SYS_NET5_INTERNET, CFG_SYS_NET6_INTERNET, CFG_SYS_NET7_INTERNET, CFG_SYS_NET5_VIA, CFG_SYS_NET6_VIA, CFG_SYS_NET7_VIA, CFG_SYS_NET1_IP, CFG_SYS_NET1_REACH, CFG_SYS_NET1_INTERNET, CFG_SYS_NET1_VIA, CFG_SYS_OPMODE, CFG_SYS_WG_DNS, CFG_SYS_ETH_NET, CFG_WLN_ApCliEnable, CFG_WLN_BssidNum, CFG_SYS_WG_ADDR, CFG_MAX };
 static char cfg[CFG_MAX][64];
 static int CFG_get_str(int id, char *val) { strcpy(val, cfg[id]); return 0; }
 struct ip_set { unsigned long ip, netmask; };
@@ -18,6 +18,7 @@ static struct ip_set primary_lan_ip_set;
 typedef int cyg_bool_t;
 static cyg_bool_t netif_alias_cfg(const char *intf, struct ip_set *setp) { (void)intf; (void)setp; return 1; }
 static int DHCPS_net_start(const char *ifname, unsigned long ip, unsigned long mask, unsigned long dns) { (void)ifname; (void)ip; (void)mask; (void)dns; return 0; }
+static int DHCPS_net_add_port(const char *ifname, const char *port) { (void)ifname; (void)port; return 0; }
 static unsigned long DNS_group_get(int i) { (void)i; return 0; }
 static void FW_setrule(char *r) { (void)r; }
 #define extern static /* the file's extern declarations refer to the stubs above */
@@ -115,6 +116,18 @@ int main(void)
 		for (k = 0; k < nrules; k++) assert(!strstr(rules[k], "/0\n"));
 		SYS_lan_ip = sip; SYS_lan_mask = smask;
 	}
+	/* the Ethernet port in routed network 2 (Wi-Fi uplink): same rules on eth1 */
+	strcpy(cfg[CFG_SYS_OPMODE], "2"); strcpy(cfg[CFG_WLN_ApCliEnable], "1"); strcpy(cfg[CFG_SYS_ETH_NET], "2");
+	assert(net_extra_eth_net() == 2);
+	nrules = 0;
+	net_extra_fw_flushed();
+	net_extra_fw_rules(collect);
+	assert(find("pass out quick on eth1 from any to any keep state\n") >= 0);
+	assert(find("pass out quick on ra1 from any to any keep state\n") >= 0);
+	strcpy(cfg[CFG_SYS_NET2_IP], ""); assert(net_extra_eth_net() == 0);   /* bridged network: no */
+	strcpy(cfg[CFG_SYS_NET2_IP], "10.0.2.1/24");
+	strcpy(cfg[CFG_SYS_OPMODE], "1"); assert(net_extra_eth_net() == 0);   /* cable uplink: the port is the WAN */
+	strcpy(cfg[CFG_SYS_OPMODE], "2"); strcpy(cfg[CFG_SYS_ETH_NET], "");
 	/* network 1 is routed only in bridge-based setups (opmode 3) */
 	strcpy(cfg[CFG_SYS_NET1_IP], "10.0.9.1/24");
 	strcpy(cfg[CFG_SYS_OPMODE], "2");

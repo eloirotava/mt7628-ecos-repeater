@@ -284,6 +284,8 @@
 #define CFG_SYS_NET7_SCHED	CFG_SYS_(125,CFG_TYPE_STR)
 /* local time offset from UTC in minutes (default -180) */
 #define CFG_SYS_TZ_OFFSET	CFG_SYS_(126,CFG_TYPE_STR)
+/* the Ethernet port is part of NAT network 2..7 (Wi-Fi uplink only; empty: as before) */
+#define CFG_SYS_ETH_NET	CFG_SYS_(127,CFG_TYPE_STR)
 /* WireGuard client (wg/wg_ecos.c) */
 #define CFG_SYS_WG_EN	CFG_SYS_(50,CFG_TYPE_STR)
 #define CFG_SYS_WG_KEY	CFG_SYS_(51,CFG_TYPE_STR)

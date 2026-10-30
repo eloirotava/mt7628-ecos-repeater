@@ -33,6 +33,11 @@ struct net {
 	struct ifnet *ifp;
 	unsigned long ip, mask, dns; /* network byte order */
 	int sock;
+	/* the Ethernet port when it is part of this network (same pool and
+	 * leases; replies go out on the port the request came in on) */
+	char ifname2[8];
+	struct ifnet *ifp2;
+	int sock2;
 	struct lease leases[LEASES];
 };
 
@@ -93,7 +98,7 @@ static struct lease *assign(struct net *n, const unsigned char *mac, unsigned lo
 	return slot;
 }
 
-static void reply(struct net *n, const struct dhcpd *req, int type, unsigned long yiaddr)
+static void reply(struct net *n, const struct dhcpd *req, int type, unsigned long yiaddr, struct ifnet *out)
 {
 	struct udp_dhcp_packet p;
 	struct dhcpd *d = &p.data;
@@ -140,12 +145,12 @@ static void reply(struct net *n, const struct dhcpd *req, int type, unsigned lon
 	p.ip.ip_ttl = IPDEFTTL;
 	p.ip.ip_sum = DHCPD_checksum(&p.ip, sizeof(p.ip));
 	{
-		int rc = LIB_etherpacket_send(n->ifp, NULL, dst_mac, (char *)&p, sizeof p);
+		int rc = LIB_etherpacket_send(out, NULL, dst_mac, (char *)&p, sizeof p);
 		diag_printf("dhcps %s: sent type %d to %s rc=%d\n", n->ifname, type, inet_ntoa(*(struct in_addr *)&yiaddr), rc);
 	}
 }
 
-static void handle(struct net *n, struct dhcpd *req)
+static void handle(struct net *n, struct dhcpd *req, struct ifnet *out)
 {
 	unsigned char type = 0;
 	unsigned long want = 0, server = 0;
@@ -157,15 +162,15 @@ static void handle(struct net *n, struct dhcpd *req)
 	dhcpd_pickup_opt(req, DHCP_SERVER_ID, sizeof server, &server);
 	switch (type) {
 	case DHCPDISCOVER:
-		if ((l = assign(n, req->chaddr, want))) reply(n, req, DHCPOFFER, l->ip);
+		if ((l = assign(n, req->chaddr, want))) reply(n, req, DHCPOFFER, l->ip, out);
 		break;
 	case DHCPREQUEST:
 		if (server && server != n->ip) { l = by_mac(n, req->chaddr); if (l) l->ip = 0; break; } /* chose another server */
 		if (!want) want = req->ciaddr; /* renewing */
 		l = assign(n, req->chaddr, want);
-		if (!l || l->ip != want) { reply(n, req, DHCPNAK, 0); break; }
+		if (!l || l->ip != want) { reply(n, req, DHCPNAK, 0, out); break; }
 		l->expires = now() + LEASE_SECS;
-		reply(n, req, DHCPACK, l->ip);
+		reply(n, req, DHCPACK, l->ip, out);
 		diag_printf("dhcps %s: %02x:%02x:%02x:%02x:%02x:%02x -> %s\n", n->ifname, req->chaddr[0], req->chaddr[1],
 		            req->chaddr[2], req->chaddr[3], req->chaddr[4], req->chaddr[5], inet_ntoa(*(struct in_addr *)&l->ip));
 		break;
@@ -174,7 +179,7 @@ static void handle(struct net *n, struct dhcpd *req)
 		if ((l = by_mac(n, req->chaddr))) l->ip = 0;
 		break;
 	case DHCPINFORM:
-		reply(n, req, DHCPACK, 0);
+		reply(n, req, DHCPACK, 0, out);
 		break;
 	}
 }
@@ -207,9 +212,24 @@ static void server_thread(cyg_addrword_t arg)
 			tv.tv_usec = 0;
 			fd = DHCPD_rcv(n->sock, &tv, 0);
 			if (fd == -1) diag_printf("dhcps %s: dropped (checksum/length)\n", n->ifname);
-			if (fd == 0 || fd == -1) continue;
-			if (DHCPD_ReadPacket(&info, fd) > 0) handle(n, &info.payload);
-			LIB_rcvinfo_close(fd);
+			if (fd > 0) {
+				if (DHCPD_ReadPacket(&info, fd) > 0) handle(n, &info.payload, n->ifp);
+				LIB_rcvinfo_close(fd);
+			}
+			if (n->ifp2) {
+				if (!n->sock2) {
+					n->sock2 = LIB_pktsocket_create(n->ifname2, pkt_check);
+					diag_printf("dhcps %s: packet socket on %s %s\n", n->ifname, n->ifname2, n->sock2 ? "ready" : "FAILED");
+				}
+				if (!n->sock2) continue;
+				tv.tv_sec = 1;
+				tv.tv_usec = 0;
+				fd = DHCPD_rcv(n->sock2, &tv, 0);
+				if (fd > 0) {
+					if (DHCPD_ReadPacket(&info, fd) > 0) handle(n, &info.payload, n->ifp2);
+					LIB_rcvinfo_close(fd);
+				}
+			}
 		}
 		cyg_mutex_unlock(&lock);
 		if (!n_nets) cyg_thread_delay(100);
@@ -242,4 +262,21 @@ int DHCPS_net_start(const char *ifname, unsigned long ip, unsigned long mask, un
 	if (!n || !n->ifp) { diag_printf("dhcps %s: not started\n", ifname); return -1; }
 	diag_printf("dhcps %s: serving %s\n", ifname, inet_ntoa(*(struct in_addr *)&ip));
 	return 0;
+}
+
+/* The pool of ifname (started with DHCPS_net_start) also serves port, an
+ * interface bridged with it (the Ethernet port in that network). */
+int DHCPS_net_add_port(const char *ifname, const char *port)
+{
+	int i, rc = -1;
+	cyg_mutex_lock(&lock);
+	for (i = 0; i < n_nets; i++)
+		if (!strcmp(nets[i].ifname, ifname)) {
+			strncpy(nets[i].ifname2, port, sizeof nets[i].ifname2 - 1);
+			nets[i].ifp2 = ifunit(port);
+			rc = nets[i].ifp2 ? 0 : -1;
+		}
+	cyg_mutex_unlock(&lock);
+	diag_printf("dhcps %s: %s %s\n", ifname, port, rc ? "not added" : "added");
+	return rc;
 }

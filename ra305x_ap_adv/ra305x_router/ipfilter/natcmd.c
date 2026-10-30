@@ -708,20 +708,29 @@ static void napt_init(void)
 			int k, count = net_extra_ifnames(names, 7);
 			extern int net_extra_via_wg(int n);
 			extern struct ifnet *ifunit(const char *name);
+			extern int net_extra_eth_net(void);
+			int eth = net_extra_eth_net(), q;
 			for (k = 0; k < count; k++) {
-				sprintf(naptcmd, "map %s fromif %s 0/0 -> 0/32 portmap tcp/udp auto\n",
-					primary_wan_ip_set[j].ifname, names[k]);
-				NAT_setrule(naptcmd);
-				sprintf(naptcmd, "map %s fromif %s 0/0 -> 0/32 icmpidmap icmp 45000:65535\n",
-					primary_wan_ip_set[j].ifname, names[k]);
-				NAT_setrule(naptcmd);
-				/* networks sent through the tunnel: NAT to the wg0 address,
-				 * the only source the WireGuard server accepts from us */
-				if (net_extra_via_wg(names[k][2] - '0' + 1) && ifunit("wg0")) {
-					sprintf(naptcmd, "map wg0 fromif %s 0/0 -> 0/32 portmap tcp/udp auto\n", names[k]);
+				/* the network's raN and, when it is part of it, the Ethernet port */
+				int num = names[k][2] - '0' + 1;
+				const char *src[2];
+				src[0] = names[k];
+				src[1] = eth == num ? "eth1" : 0;
+				for (q = 0; q < 2 && src[q]; q++) {
+					sprintf(naptcmd, "map %s fromif %s 0/0 -> 0/32 portmap tcp/udp auto\n",
+						primary_wan_ip_set[j].ifname, src[q]);
 					NAT_setrule(naptcmd);
-					sprintf(naptcmd, "map wg0 fromif %s 0/0 -> 0/32 icmpidmap icmp 45000:65535\n", names[k]);
+					sprintf(naptcmd, "map %s fromif %s 0/0 -> 0/32 icmpidmap icmp 45000:65535\n",
+						primary_wan_ip_set[j].ifname, src[q]);
 					NAT_setrule(naptcmd);
+					/* networks sent through the tunnel: NAT to the wg0 address,
+					 * the only source the WireGuard server accepts from us */
+					if (net_extra_via_wg(num) && ifunit("wg0")) {
+						sprintf(naptcmd, "map wg0 fromif %s 0/0 -> 0/32 portmap tcp/udp auto\n", src[q]);
+						NAT_setrule(naptcmd);
+						sprintf(naptcmd, "map wg0 fromif %s 0/0 -> 0/32 icmpidmap icmp 45000:65535\n", src[q]);
+						NAT_setrule(naptcmd);
+					}
 				}
 			}
 		}

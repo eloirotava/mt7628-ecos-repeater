@@ -46,6 +46,7 @@ void mdns_status(const char **s, unsigned *q, unsigned *a, unsigned *n) { *s = "
 int sched_is_off(int n) { return 0; }
 int sched_tz(void) { return -180; }
 long wg_ecos_unix_time(int sync) { return 0; }
+int net_extra_eth_net(void) { return 0; }
 static unsigned long SYS_wan_ip;
 int HTTPD_reconf;
 #define MON_CMD_REBOOT 2
@@ -215,6 +216,9 @@ int main(void) {
  S1("cable");Q("TYPE1","nat");CGI_setup_apply(&post);assert(strstr(output,"ADDRESS1"));assert(sets==0);
  S1("cable");CGI_setup_apply(&post);assert(strstr(output,"TYPE1"));assert(sets==0);
  S1("satellite");CGI_setup_apply(&post);assert(strstr(output,"UPLINK"));assert(sets==0);
+ S1("wifi");Q("UPLINK_SSID","AP31");Q("UPLINK_SECURITY","wpa2");Q("UPLINK_PASSWORD","uplink-pass-1");Q("TYPE1","nat");Q("ADDRESS1","10.0.1.1/24");values[2]="2";Q("SSID2","cable");Q("SECURITY2","open");Q("TYPE2","nat");Q("ADDRESS2","10.0.2.1/24");Q("ETHERNET","net2");CGI_setup_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[CFG_SYS_ETH_NET],"2"));
+ S1("wifi");Q("UPLINK_SSID","AP31");Q("UPLINK_SECURITY","wpa2");Q("UPLINK_PASSWORD","uplink-pass-1");Q("TYPE1","nat");Q("ADDRESS1","10.0.1.1/24");values[2]="2";Q("SSID2","cable");Q("SECURITY2","open");Q("TYPE2","bridge");Q("ETHERNET","net2");CGI_setup_apply(&post);assert(strstr(output,"ETHERNET=net2"));assert(sets==0);
+ S1("cable");Q("TYPE1","nat");Q("ADDRESS1","192.168.11.1/24");strcpy(cfg[CFG_SYS_ETH_NET],"2");CGI_setup_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[CFG_SYS_ETH_NET],""));
  S1("cable");Q("TYPE1","nat");Q("ADDRESS1","192.168.11.1/24");values[2]="2";Q("SSID2","guest");Q("SECURITY2","open");Q("TYPE2","nat");Q("ADDRESS2","10.0.2.1/24");Q("SCHED2","08:00-22:30");CGI_setup_apply(&post);assert(!strcmp(output,"OK"));assert(!strcmp(cfg[CFG_SYS_NET2_SCHED],"08:00-22:30"));
  S1("cable");Q("TYPE1","nat");Q("ADDRESS1","192.168.11.1/24");values[2]="2";Q("SSID2","guest");Q("SECURITY2","open");Q("TYPE2","nat");Q("ADDRESS2","10.0.2.1/24");Q("SCHED2","8-22");CGI_setup_apply(&post);assert(strstr(output,"SCHED2"));assert(sets==0);
  S1("cable");Q("TYPE1","nat");Q("ADDRESS1","192.168.11.1/24");Q("SCHED1","08:00-22:00");CGI_setup_apply(&post);assert(strstr(output,"network 1"));assert(sets==0);

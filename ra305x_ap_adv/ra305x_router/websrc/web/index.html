@@ -110,8 +110,8 @@ legend{font-weight:600;padding:0 4px}
 <input id="uplink-bssid" maxlength="17" autocomplete="off" spellcheck="false" placeholder="aa:bb:cc:dd:ee:ff">
 <small>Pins the uplink to one access point when several share the network name.</small>
 <label for="ethernet">Ethernet port</label>
-<select id="ethernet"><option value="net1">Part of network 1</option><option value="internet">Bridged with the Internet side</option></select>
-<small>“Part of network 1” needs network 1 as NAT and no bridged network.</small>
+<select id="ethernet"><option value="net1">Part of network 1</option><option value="net2">Part of network 2</option><option value="net3">Part of network 3</option><option value="net4">Part of network 4</option><option value="net5">Part of network 5</option><option value="net6">Part of network 6</option><option value="net7">Part of network 7</option><option value="internet">Bridged with the Internet side</option></select>
+<small>“Part of network 1” needs network 1 as NAT and no bridged network; networks 2–7 must be NAT. A device on the cable then gets that network's addresses.</small>
 </div>
 <label for="channel">Channel</label>
 <select id="channel"></select>
@@ -387,7 +387,7 @@ var REACH = [['device', 'This device']].concat([1, 2, 3, 4, 5, 6, 7].map(functio
     input('net' + n + '-address', 'Address/prefix', {maxLength: 18, spellcheck: false, autocomplete: 'off', placeholder: n === 1 ? '192.168.11.1/24' : '10.0.' + n + '.1/24'});
     if (n === 1) check('net1-dhcp', 'Hand out addresses (DHCP)');
     check('net' + n + '-internet', 'Internet access');
-    check('net' + n + '-via-wg', 'Internet through the WireGuard tunnel (uses the WireGuard DNS)');
+    check('net' + n + '-via-wg', 'Internet through the WireGuard tunnel');
     var p = document.createElement('p'); p.className = 'hint'; p.textContent = 'May reach:'; add(p);
     var box = document.createElement('div'); box.className = 'checks'; box.id = 'net' + n + '-reach'; add(box);
     REACH.forEach(function (rr) {
@@ -412,7 +412,7 @@ function fillForms() {
   $('channel').value = String(state.channel >= 1 && state.channel <= 13 ? state.channel : 6);
   $('uplink').value = state.uplink && state.uplink !== 'ECOSAPClient' ? state.uplink : '';
   $('uplink-security').value = securityName(state.security);
-  $('ethernet').value = state.ethernet === 'internet' ? 'internet' : 'net1';
+  $('ethernet').value = /^(net[1-7]|internet)$/.test(state.ethernet || '') ? state.ethernet : 'net1';
   $('admin-user').value = state.admin_user || 'admin';
   $('mdns-name').value = state.mdns_name || '';
   $('log-server').value = state.log_server || '';
@@ -595,6 +595,8 @@ setupForm.addEventListener('submit', async function (e) {
   }
   body.set('DHCP1', $('net1-dhcp').checked ? '1' : '0');
   if (rep && $('ethernet').value === 'net1' && bridged) return msg(out, 'Ethernet “part of network 1” needs network 1 as NAT and no bridged network.', 'bad');
+  var en = rep ? /^net([2-7])$/.exec($('ethernet').value) : null;
+  if (en && (+en[1] > count || $('net' + en[1] + '-type').value !== 'nat')) return msg(out, 'Ethernet “part of network ' + en[1] + '” needs network ' + en[1] + ' active and NAT.', 'bad');
   if (!window.confirm('Save the Internet and network settings and restart the device?')) return;
   $('apply').disabled = true;
   try {

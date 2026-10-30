@@ -76,7 +76,7 @@ Requests that change settings use POST with application/x-www-form-urlencoded fi
 
 GET /wifi_state.html returns JSON:
 - busy (0 or 1), revision (apply counter), error (0 on success; -3 means saving failed), stage, saved (1 when the last apply was written and verified in flash).
-- layout (nat: every active network is NAT; bridge: all bridged; mixed), uplink_type (cable or wifi), ethernet (wan: the cable is the Internet; net1: the port is part of network 1; internet: the port is bridged with the Internet side).
+- layout (nat: every active network is NAT; bridge: all bridged; mixed), uplink_type (cable or wifi), ethernet (wan: the cable is the Internet; net1 ... net7: the port is part of that network; internet: the port is bridged with the Internet side).
 - mode (gateway, ap, repeater or router: the underlying mode of the older endpoints), ssid (device network), device_security (open or wpa2), channel.
 - uplink (uplink SSID in repeater and router modes), security (uplink driver authentication name), uplink_status (repeater only: driver connection text, for example "Connected" or "Disconnected").
 - admin_user, admin_password_set (0 or 1), telnet (1 when Telnet logins are accepted).
@@ -97,7 +97,7 @@ GET /wifi_scan.html runs a site survey (about 3 seconds) and returns JSON {"erro
 
 POST /setup_apply.html sets everything in one request; the device saves and restarts. Fields:
 - UPLINK: cable or wifi. CHANNEL: 1-13 (with a Wi-Fi uplink, the uplink's channel; all networks share it).
-- Wi-Fi uplink: UPLINK_SSID (1-32 bytes), UPLINK_SECURITY (wpa2, mixed or open), UPLINK_PASSWORD (8-63 ASCII; empty keeps the stored one for the same SSID), UPLINK_BSSID (optional aa:bb:cc:dd:ee:ff), ETHERNET (net1: the port is part of network 1, needs network 1 as NAT and no bridged network; internet: the port is bridged with the Internet side).
+- Wi-Fi uplink: UPLINK_SSID (1-32 bytes), UPLINK_SECURITY (wpa2, mixed or open), UPLINK_PASSWORD (8-63 ASCII; empty keeps the stored one for the same SSID), UPLINK_BSSID (optional aa:bb:cc:dd:ee:ff), ETHERNET (net1: the port is part of network 1, needs network 1 as NAT and no bridged network; net2 ... net7: the port is part of that network, which must be active and NAT: a device on the cable gets its addresses, rules and Internet path; internet: the port is bridged with the Internet side).
 - COUNT: 1-7 networks (the radio has 8 beacons and a Wi-Fi uplink uses one).
 - For each n from 1 to COUNT: SSIDn (1-32 bytes); SECURITYn (open or wpa2); PASSWORDn (8-63 ASCII; empty keeps the stored key when the network already used WPA2); TYPEn (nat or bridge); ISOLATEn (1: clients cannot see each other).
 - For NAT networks: ADDRESSn (IPv4/prefix 8-30, the device's address; DHCP hands out .100-.199); INTERNETn (1 default, or 0); REACHn (comma list of what the network may open connections to: device, net1 ... net7, lan (the local network on the Internet side), wg; empty: only the Internet); VIAn (wan default, or wg: Internet through the WireGuard tunnel, dropped if the tunnel is down; DNS offered is the WireGuard DNS, default 1.1.1.1).
